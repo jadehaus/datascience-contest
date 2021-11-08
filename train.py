@@ -119,7 +119,6 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=seq_collate)
     valid_loader = DataLoader(valid_dataset, batch_size=8, shuffle=True, collate_fn=seq_collate)
 
-    print(len(train_dataset) + len(valid_dataset))
     # Import and train model
     max_epoch = 100
     model = Predictor()

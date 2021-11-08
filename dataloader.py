@@ -24,7 +24,8 @@ def seq_tensor(gas, cnd, hrs, n=(1e5, 1e4, 1e3)):
         if h == 0:
             rest += 1
         else:
-            sequences.append([gas[j]/n[0], cnd[j]/n[1], hrs[j]/n[2], rest])
+            rates = [gas[j]/(n[0] * hrs[j]), cnd[j]/(n[1] * hrs[j]), hrs[j]/n[2], rest]
+            sequences.append(rates)
             rest = 0
 
     return torch.tensor(sequences)

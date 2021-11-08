@@ -9,8 +9,10 @@ value_features: ['Reference (KB) Elev. (ft)', 'Ground Elevation (ft)', 'MD (All 
            'Total Proppant 1 Placed (tonne)', 'Total Ceramic Proppant Placed (tonne)',
            'Total Sand Proppant Placed (tonne)', 'Avg Fluid Pumped per Stage (m3)',
            'Avg Proppant Placed per Stage (tonne)']
-string_features: ['Stimulation Fluid', 'Proppant Composition', 'Proppant Name 1', 'Proppant Size 1']
-remove_features: ['On Prod YYYY/MM/DD', 'First Prod YYYY/MM', 'Last Prod. YYYY/MM', 'No', 'CPA Pretty Well ID']
+string_features: ['Stimulation Fluid', 'Proppant Composition', 'Proppant Name 1']
+remove_features: ['On Prod YYYY/MM/DD', 'First Prod YYYY/MM', 'Last Prod. YYYY/MM',
+                  'No', 'CPA Pretty Well ID', 'Total Ceramic Proppant Placed (tonne)',
+                  'Proppant Size 1', 'Load Fluid Rec (m3)']
 
 norm_factor_dict:
   'Reference (KB) Elev. (ft)': 1e4
@@ -27,17 +29,13 @@ norm_factor_dict:
   'Stages Actual': 1e2
   'Completed Length (m)': 1e4
   'Avg Frac Spacing (m)': 1e2
-  'Load Fluid Rec (m3)': 1e7  # give a lot of penealty since many are missing
+  # 'Load Fluid Rec (m3)': 1e7  # give a lot of penealty since many are missing
   'Load Fluid (m3)': 1e5
   'Avg Fluid Pumped / Meter (m3)': 1e2
   'Avg Proppant Placed / Meter (tonne)': 1e1
   'Avg Proppant 1 Placed (tonne)': 1e2
   'Total Proppant 1 Placed (tonne)': 1e4
-  'Total Ceramic Proppant Placed (tonne)': 1e7  # give a lot of penealty since many are missing
+  # 'Total Ceramic Proppant Placed (tonne)': 1e7  # give a lot of penealty since many are missing
   'Total Sand Proppant Placed (tonne)': 1e4
 
-
-
-
-
-
+# 'Load Fluid Rec (m3)', 'Proppant Size 1'

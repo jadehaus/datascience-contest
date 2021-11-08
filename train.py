@@ -131,9 +131,8 @@ if __name__ == '__main__':
         train_loss = process(model, train_loader, optimizer=optimizer)
         valid_loss = process(model, valid_loader, optimizer=None)
 
-        if args.debug:
-            print(f"    Train loss: {train_loss}")
-            print(f"    Valid loss: {valid_loss}")
+        print(f"    Train loss: {train_loss}")
+        print(f"    Valid loss: {valid_loss}")
 
         scheduler.step(valid_loss)
         if scheduler.num_bad_epoch == 0:

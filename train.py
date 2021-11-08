@@ -116,9 +116,10 @@ if __name__ == '__main__':
 
     train_file = pd.read_csv(train_root_path)
     train_dataset, valid_dataset = preprocess(train_file, norm_dict, string_feats, remove_feats, ratio=0.2)
-    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=seq_collate)
-    valid_loader = DataLoader(valid_dataset, batch_size=4, shuffle=True, collate_fn=seq_collate)
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=seq_collate)
+    valid_loader = DataLoader(valid_dataset, batch_size=8, shuffle=True, collate_fn=seq_collate)
 
+    print(len(train_dataset) + len(valid_dataset))
     # Import and train model
     max_epoch = 100
     model = Predictor()
@@ -132,6 +133,10 @@ if __name__ == '__main__':
         valid_loss = process(model, valid_loader, optimizer=None)
 
         if args.debug:
+            print(f"    Train loss: {train_loss}")
+            print(f"    Valid loss: {valid_loss}")
+
+        if True:
             print(f"    Train loss: {train_loss}")
             print(f"    Valid loss: {valid_loss}")
 

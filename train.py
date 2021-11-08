@@ -135,10 +135,6 @@ if __name__ == '__main__':
             print(f"    Train loss: {train_loss}")
             print(f"    Valid loss: {valid_loss}")
 
-        if True:
-            print(f"    Train loss: {train_loss}")
-            print(f"    Valid loss: {valid_loss}")
-
         scheduler.step(valid_loss)
         if scheduler.num_bad_epoch == 0:
             print(f"    Best model so far. Saving parameters...")

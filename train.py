@@ -53,7 +53,7 @@ def log(str, logfile=None):
                 print(str, file=f)
 
 
-def process(model, data_loader, optimizer=None):
+def process(model, data_loader, optimizer=None, device=torch.device('cpu')):
     """
     Process samples. If an optimizer is given, also train on those samples.
     Parameters
@@ -64,6 +64,7 @@ def process(model, data_loader, optimizer=None):
         Pre-loaded dataset of training samples.
     optimizer: torch.optim (optional)
         Optimizer object. If not None, will be used for updating the model parameters.
+    device: torch.device
     Returns
     -------
     mean_loss : float
@@ -74,9 +75,13 @@ def process(model, data_loader, optimizer=None):
 
     with torch.set_grad_enabled(optimizer is not None):
         for _, samples in enumerate(data_loader):
-            data, label = samples, samples['target']
+            sequences = samples['sequences'].to(device)
+            features = samples['features'].float().to(device)
+            label = samples['target'].float().to(device)
+
+            data = (sequences, features)
             prediction = model(data).view(-1).cpu()
-            loss = F.mse_loss(prediction, label.float(), reduction='mean')
+            loss = F.mse_loss(prediction, label, reduction='mean')
             total_loss += loss
 
             if optimizer is not None:
@@ -141,7 +146,12 @@ if __name__ == '__main__':
     loader_root = "./loader.yml"
     loader_config = yaml.load(open(loader_root, 'r'), Loader=yaml.SafeLoader)
     save_dir = os.path.join('./saved_params', str_current_time())
-    os.makedirs(save_dir, exist_ok=True)
+
+    # Debug argument setup
+    if args.debug:
+        save_dir = os.path.join('./saved_params', 'debug')
+        max_epoch = 10
+        patience = 1
 
     # Setup Training Data
     train_root_path = "./datasets/trainSet.csv"
@@ -170,6 +180,7 @@ if __name__ == '__main__':
     scheduler = Scheduler(patience=patience)
 
     # logging setup
+    os.makedirs(save_dir, exist_ok=True)
     logfile = os.path.join(save_dir, 'train_log.txt')
     if os.path.exists(logfile):
         os.remove(logfile)
@@ -182,8 +193,8 @@ if __name__ == '__main__':
 
     for epoch in range(max_epoch):
         log(f"EPOCH {epoch}...", logfile)
-        train_loss = process(model, train_loader, optimizer=optimizer)
-        valid_loss = process(model, valid_loader, optimizer=None)
+        train_loss = process(model, train_loader, optimizer=optimizer, device=device)
+        valid_loss = process(model, valid_loader, optimizer=None, device=device)
 
         log(f"  Train loss: {train_loss}", logfile)
         log(f"  Valid loss: {valid_loss}", logfile)
@@ -197,5 +208,10 @@ if __name__ == '__main__':
             break
 
     model.load_state_dict(torch.load(pathlib.Path(os.path.join(save_dir, 'best_params.pkl'))))
-    valid_loss = process(model, valid_loader, optimizer=None)
+    valid_loss = process(model, valid_loader, optimizer=None, device=device)
     log(f"  BEST VALID LOSS: {valid_loss}", logfile)
+
+    # Make predictions with the exam data
+    test_file = pd.read_csv(test_root_path)
+    test_dataset = preprocess(test_file, norm_dict, string_feats, remove_feats, ratio=None)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=seq_collate)

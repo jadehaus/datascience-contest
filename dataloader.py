@@ -84,15 +84,22 @@ def preprocess(dataset, normalize_dict, string_feats, remove_feats=None, ratio=0
 
     # dataugmentation / inplace addition of data
     dataset = augment_data(dataset)
-
     total_features = [f for f in dataset.columns if ('MONTH' not in f and 'mo.' not in f)]
-    valid_data = dataset.sample(frac=ratio).reset_index(drop=True)
-    train_data = dataset.drop(valid_data.index).reset_index(drop=True)
 
-    train_dataset = WellDataset(train_data, total_features, train=True)
-    valid_dataset = WellDataset(valid_data, total_features, train=False)
+    # evaluation mode
+    if ratio is None:
+        eval_dataset = WellDataset(dataset, total_features, train=False, exam=True)
+        return eval_dataset
 
-    return train_dataset, valid_dataset
+    # training mode
+    else:
+        valid_data = dataset.sample(frac=ratio).reset_index(drop=True)
+        train_data = dataset.drop(valid_data.index).reset_index(drop=True)
+
+        train_dataset = WellDataset(train_data, total_features, train=True)
+        valid_dataset = WellDataset(valid_data, total_features, train=False)
+
+        return train_dataset, valid_dataset
 
 
 def augment_data(dataset):
@@ -117,12 +124,14 @@ class WellDataset(Dataset):
     features: list
     gas_norm: float (optional)
     train: bool (optional)
+    eval: bool (optional)
     """
-    def __init__(self, dataset, features, gas_norm=1e5, train=True):
+    def __init__(self, dataset, features, gas_norm=1e5, train=True, exam=False):
         self.dataset = dataset
         self.features = features
         self.train = train
         self.gas_norm = gas_norm
+        self.exam = exam
 
     def __len__(self):
         return len(self.dataset)
@@ -138,8 +147,10 @@ class WellDataset(Dataset):
         empty_sequence = (len(sequences) == 1)
         static_features = torch.tensor(self.dataset[self.features].loc[idx])
 
-        target_name = 'First 6 mo. Avg. GAS (Mcf)' if empty_sequence else 'Last 6 mo. Avg. GAS (Mcf)'
-        target = torch.tensor(self.dataset[target_name].loc[idx]/self.gas_norm)
+        target = torch.zeros(1)
+        if not self.exam:
+            target_name = 'First 6 mo. Avg. GAS (Mcf)' if empty_sequence else 'Last 6 mo. Avg. GAS (Mcf)'
+            target = torch.tensor(self.dataset[target_name].loc[idx]/self.gas_norm)
 
         sample = {'features': static_features, 'sequences': sequences, 'target': target}
 

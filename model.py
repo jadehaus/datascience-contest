@@ -36,22 +36,14 @@ class Predictor(nn.Module):
             nn.Linear(feature_dim // 2, sequence_dim)
         )
 
-    def forward(self, x):
+    def forward(self, data):
 
-        sequences, features = x['sequences'], x['features'].float()
+        sequences, features = data
 
-        if next(self.parameters()).is_cuda:
-            sequences, features = sequences.cuda(), features.cuda()
-
-        # with sos
         sos = self.make_sos(features).unsqueeze(1)  # [b 1 f]
         _, (hidden, cell) = self.lstm(sos)
         _, (hidden, cell) = self.lstm(sequences.float(), (hidden, cell))
 
-        # without sos
-        # _, (hidden, cell) = self.lstm(sequences.float())
-
-        # readout
         output = torch.cat([hidden[-1], features], dim=1)
         output = self.fc(output.float())
         return output

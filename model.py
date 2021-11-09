@@ -37,10 +37,14 @@ class Predictor(nn.Module):
         )
 
     def forward(self, x):
+
         sequences, features = x['sequences'], x['features'].float()
-        sos = self.make_sos(features).unsqueeze(1)  # [b 1 f]
+
+        if next(self.parameters()).is_cuda:
+            sequences, features = sequences.cuda(), features.cuda()
 
         # with sos
+        sos = self.make_sos(features).unsqueeze(1)  # [b 1 f]
         _, (hidden, cell) = self.lstm(sos)
         _, (hidden, cell) = self.lstm(sequences.float(), (hidden, cell))
 

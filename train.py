@@ -30,7 +30,7 @@ def str_current_time():
     return current_datetime
 
 
-def process(model, data_loader, optimizer=None):
+def process(model, data_loader, optimizer=None, device='cpu'):
     """
     Process samples. If an optimizer is given, also train on those samples.
     Parameters
@@ -46,6 +46,13 @@ def process(model, data_loader, optimizer=None):
     mean_loss : float
         Mean MSE loss.
     """
+    if device == 'gpu':
+        model.cuda()
+
+    if optimizer is not None:
+        model.train()
+    else:
+        model.eval()
 
     total_loss = 0
     n_data = len(data_loader)
@@ -53,7 +60,7 @@ def process(model, data_loader, optimizer=None):
     with torch.set_grad_enabled(optimizer is not None):
         for _, samples in enumerate(data_loader):
             data, label = samples, samples['target']
-            prediction = model(data).view(-1)
+            prediction = model(data).view(-1).cpu()
             loss = F.mse_loss(prediction, label.float(), reduction='mean')
             total_loss += loss
 
@@ -94,6 +101,14 @@ class Scheduler:
 
 if __name__ == '__main__':
 
+    # check for gpu
+    if torch.cuda.is_available():
+        print('gpu detected')
+        device = 'gpu'
+    else:
+        print('gpu not detected')
+        device = 'cpu'
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-d', '--debug',
@@ -128,8 +143,8 @@ if __name__ == '__main__':
     for epoch in range(max_epoch):
         print()
         print(f"Epoch {epoch}...")
-        train_loss = process(model, train_loader, optimizer=optimizer)
-        valid_loss = process(model, valid_loader, optimizer=None)
+        train_loss = process(model, train_loader, optimizer=optimizer, device=device)
+        valid_loss = process(model, valid_loader, optimizer=None, device=device)
 
         print(f"    Train loss: {train_loss}")
         print(f"    Valid loss: {valid_loss}")

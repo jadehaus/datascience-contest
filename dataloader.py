@@ -82,6 +82,9 @@ def preprocess(dataset, normalize_dict, string_feats, remove_feats=None, ratio=0
     for feats in normalize_dict:
         dataset[feats] /= float(normalize_dict[feats])
 
+    # dataugmentation / inplace addition of data
+    dataset = augment_data(dataset)
+
     total_features = [f for f in dataset.columns if ('MONTH' not in f and 'mo.' not in f)]
     valid_data = dataset.sample(frac=ratio).reset_index(drop=True)
     train_data = dataset.drop(valid_data.index).reset_index(drop=True)
@@ -90,6 +93,16 @@ def preprocess(dataset, normalize_dict, string_feats, remove_feats=None, ratio=0
     valid_dataset = WellDataset(valid_data, total_features, train=False)
 
     return train_dataset, valid_dataset
+
+def augment_data(dataset):
+    '''
+    LJW, 20211109 added. elongate dataset / make label and sequence
+    input:
+        dataset: pandas.DataFrame
+    output:
+        dataset: pandas.DataFrame
+    '''
+    return dataset
 
 
 class WellDataset(Dataset):

@@ -21,39 +21,54 @@ def str_current_time():
     now = datetime.now()
     current_datetime = \
         str(now.year) + \
-        str(now.month) + \
-        str(now.day) + \
-        str(now.hour) + \
-        str(now.strftime('%M')) +\
+        str('%02d' % now.month) + \
+        str('%02d' % now.day) + \
+        str('%02d' % now.hour) + \
+        str(now.strftime('%M')) + \
         str(now.strftime('%S'))
 
     return current_datetime
 
 
-def process(model, data_loader, optimizer=None, device='cpu'):
+def log(str, logfile=None):
+    """
+    Prints the provided string, and also logs it if a logfile is passed.
+    Parameters
+    ----------
+    str : str
+        String to be printed/logged.
+    logfile : str (optional)
+        File to log into.
+    """
+    str = f'[{datetime.now()}] {str}'
+    print(str)
+    if logfile is not None:
+        # file existence
+        if not os.path.isfile(logfile):
+            with open(logfile, mode='w') as f:
+                print(str, file=f)
+                f.close()
+        else:
+            with open(logfile, mode='a') as f:
+                print(str, file=f)
+
+
+def process(model, data_loader, optimizer=None):
     """
     Process samples. If an optimizer is given, also train on those samples.
     Parameters
     ----------
-    model : torch.nn.Module
+    model: torch.nn.Module
         Model to train/evaluate.
-    data_loader : torch.utils.data.DataLoader
+    data_loader: torch.utils.data.DataLoader
         Pre-loaded dataset of training samples.
-    optimizer : torch.optim (optional)
+    optimizer: torch.optim (optional)
         Optimizer object. If not None, will be used for updating the model parameters.
     Returns
     -------
     mean_loss : float
         Mean MSE loss.
     """
-    if device == 'gpu':
-        model.cuda()
-
-    if optimizer is not None:
-        model.train()
-    else:
-        model.eval()
-
     total_loss = 0
     n_data = len(data_loader)
 
@@ -101,22 +116,28 @@ class Scheduler:
 
 if __name__ == '__main__':
 
-    # check for gpu
-    if torch.cuda.is_available():
-        print('gpu detected')
-        device = 'gpu'
-    else:
-        print('gpu not detected')
-        device = 'cpu'
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-d', '--debug',
         help='Print debug traces.',
         action='store_true',
     )
+    parser.add_argument(
+        '-g', '--gpu',
+        help='CUDA GPU id (-1 for CPU).',
+        type=int,
+        default=-1,
+    )
     args = parser.parse_args()
 
+    # Hyperparameters
+    max_epoch = 100
+    batch_size = 8
+    ratio = 0.2
+    lr = 1e-4
+    patience = 10
+
+    # Working directory setup
     loader_root = "./loader.yml"
     loader_config = yaml.load(open(loader_root, 'r'), Loader=yaml.SafeLoader)
     save_dir = os.path.join('./saved_params', str_current_time())
@@ -130,28 +151,51 @@ if __name__ == '__main__':
     remove_feats = loader_config['remove_features']
 
     train_file = pd.read_csv(train_root_path)
-    train_dataset, valid_dataset = preprocess(train_file, norm_dict, string_feats, remove_feats, ratio=0.2)
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=seq_collate)
-    valid_loader = DataLoader(valid_dataset, batch_size=8, shuffle=True, collate_fn=seq_collate)
+    train_dataset, valid_dataset = preprocess(train_file, norm_dict, string_feats, remove_feats, ratio=ratio)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=seq_collate)
+    valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True, collate_fn=seq_collate)
+
+    # cuda setup
+    if args.gpu == -1:
+        os.environ['CUDA_VISIBLE_DEVICES'] = ''
+        device = "cpu"
+    else:
+        device_num = int(float(args.gpu))
+        torch.cuda.set_device(device_num)
+        device = torch.device('cuda')
 
     # Import and train model
-    max_epoch = 100
-    model = Predictor()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    scheduler = Scheduler(patience=10)
+    model = Predictor().to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    scheduler = Scheduler(patience=patience)
+
+    # logging setup
+    logfile = os.path.join(save_dir, 'train_log.txt')
+    if os.path.exists(logfile):
+        os.remove(logfile)
+
+    log(f"Debug mode: {args.debug}", logfile)
+    log(f"Max epochs: {max_epoch}", logfile)
+    log(f"Batch size: {batch_size}", logfile)
+    log(f"Learning rate: {lr}", logfile)
+    log(f"Device: {device}")
 
     for epoch in range(max_epoch):
-        print()
-        print(f"Epoch {epoch}...")
-        train_loss = process(model, train_loader, optimizer=optimizer, device=device)
-        valid_loss = process(model, valid_loader, optimizer=None, device=device)
+        log(f"EPOCH {epoch}...", logfile)
+        train_loss = process(model, train_loader, optimizer=optimizer)
+        valid_loss = process(model, valid_loader, optimizer=None)
 
-        print(f"    Train loss: {train_loss}")
-        print(f"    Valid loss: {valid_loss}")
+        log(f"  Train loss: {train_loss}", logfile)
+        log(f"  Valid loss: {valid_loss}", logfile)
 
         scheduler.step(valid_loss)
         if scheduler.num_bad_epoch == 0:
-            print(f"    Best model so far. Saving parameters...")
+            log(f"  Best model so far. Saving parameters...", logfile)
             torch.save(model.state_dict(), pathlib.Path(os.path.join(save_dir, "best_params.pkl")))
         elif scheduler.num_bad_epoch == scheduler.patience:
+            log(f"  {patience} epochs without improvement, early stopping", logfile)
             break
+
+    model.load_state_dict(torch.load(pathlib.Path(os.path.join(save_dir, 'best_params.pkl'))))
+    valid_loss = process(model, valid_loader, optimizer=None)
+    log(f"  BEST VALID LOSS: {valid_loss}", logfile)

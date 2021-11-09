@@ -94,14 +94,17 @@ def preprocess(dataset, normalize_dict, string_feats, remove_feats=None, ratio=0
 
     return train_dataset, valid_dataset
 
+
 def augment_data(dataset):
-    '''
+    """
     LJW, 20211109 added. elongate dataset / make label and sequence
-    input:
-        dataset: pandas.DataFrame
-    output:
-        dataset: pandas.DataFrame
-    '''
+    Parameters
+    ----------
+    dataset: pandas.DataFrame
+    Returns
+    -------
+    dataset: pandas.DataFrame
+    """
     return dataset
 
 

@@ -9,7 +9,7 @@ import pathlib
 import argparse
 import yaml
 
-from dataloader import seq_collate, preprocess
+from dataloader import seq_collate, preprocess, exam_loader
 from model import Predictor
 from datetime import datetime
 
@@ -53,7 +53,7 @@ def log(str, logfile=None):
                 print(str, file=f)
 
 
-def process(model, data_loader, optimizer=None, device=torch.device('cpu')):
+def process(model, data_loader, optimizer=None, device='cpu'):
     """
     Process samples. If an optimizer is given, also train on those samples.
     Parameters
@@ -81,6 +81,7 @@ def process(model, data_loader, optimizer=None, device=torch.device('cpu')):
 
             data = (sequences, features)
             prediction = model(data).view(-1).cpu()
+
             loss = F.mse_loss(prediction, label, reduction='mean')
             total_loss += loss
 
@@ -137,7 +138,7 @@ if __name__ == '__main__':
 
     # Hyperparameters
     max_epoch = 100
-    batch_size = 8
+    batch_size = 4
     ratio = 0.2
     lr = 1e-4
     patience = 10
@@ -157,11 +158,12 @@ if __name__ == '__main__':
     train_root_path = "./datasets/trainSet.csv"
     test_root_path = "./datasets/examSet.csv"
     norm_dict = loader_config['norm_factor_dict']
-    string_feats = loader_config['string_features']
-    remove_feats = loader_config['remove_features']
+    values = loader_config['value_features']
+    strings = loader_config['string_features']
+    removes = loader_config['remove_features']
 
     train_file = pd.read_csv(train_root_path)
-    train_dataset, valid_dataset = preprocess(train_file, norm_dict, string_feats, remove_feats, ratio=ratio)
+    train_dataset, valid_dataset = preprocess(train_file, norm_dict, values, strings, removes, ratio=ratio)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=seq_collate)
     valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True, collate_fn=seq_collate)
 
@@ -213,5 +215,18 @@ if __name__ == '__main__':
 
     # Make predictions with the exam data
     test_file = pd.read_csv(test_root_path)
-    test_dataset = preprocess(test_file, norm_dict, string_feats, remove_feats, ratio=None)
+    test_dataset = exam_loader(train_file, test_file, norm_dict, values, strings, removes)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=seq_collate)
+
+    predictions = []
+    with torch.set_grad_enabled(False):
+        for _, samples in enumerate(test_loader):
+            sequences = samples['sequences'].to(device)
+            features = samples['features'].float().to(device)
+            label = samples['target'].float().to(device)
+
+            data = (sequences, features)
+            production = model(data).view(-1).cpu().detach().numpy()
+            predictions.extend(production * 1e5)
+
+    log(f'Predicted gas productions for exam dataset: \n{predictions}', logfile)

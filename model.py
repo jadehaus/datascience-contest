@@ -19,7 +19,7 @@ class Predictor(nn.Module):
     n_layers: int
         number of recurrent layers
     """
-    def __init__(self, feature_dim=55, sequence_dim=4, hidden_dim=64, n_layers=2):
+    def __init__(self, feature_dim=44, sequence_dim=4, hidden_dim=64, n_layers=2):
         super().__init__()
         self.lstm = nn.LSTM(input_size=sequence_dim, hidden_size=hidden_dim,
                             num_layers=n_layers, batch_first=True)

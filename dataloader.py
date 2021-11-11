@@ -3,6 +3,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
+from sklearn.impute import SimpleImputer
 
 
 def seq_tensor(gas, cnd, hrs, n=(1e5, 1e4, 1e3)):
@@ -58,7 +59,7 @@ def seq_collate(batch):
     return padded_batch
 
 
-def preprocess(dataset, normalize_dict, string_feats, remove_feats=None, ratio=0.2):
+def preprocess(dataset, normalize_dict, value_feats, string_feats, remove_feats=None, ratio=0.2):
     """
     Preprocesses datasets via normalizing and removing unnecessary features.
     Also one-hot-encodes string features.
@@ -66,6 +67,7 @@ def preprocess(dataset, normalize_dict, string_feats, remove_feats=None, ratio=0
     ----------
     dataset: pandas.DataFrame
     normalize_dict: dict
+    value_feats: list
     string_feats: list
     remove_feats: (optional) list
     ratio: float in [0, 1]
@@ -78,28 +80,75 @@ def preprocess(dataset, normalize_dict, string_feats, remove_feats=None, ratio=0
     if remove_feats is not None:
         dataset = dataset.drop(remove_feats, axis=1)
 
+    # imputes missing data
+    num_imputer = SimpleImputer(strategy='mean')
+    cat_imputer = SimpleImputer(strategy='most_frequent')
+    dataset[value_feats] = num_imputer.fit_transform(dataset[value_feats])
+    dataset[string_feats] = cat_imputer.fit_transform(dataset[string_feats])
+
     dataset = pd.get_dummies(dataset, columns=string_feats)
     for feats in normalize_dict:
         dataset[feats] /= float(normalize_dict[feats])
 
     # dataugmentation / inplace addition of data
     dataset = augment_data(dataset)
+
     total_features = [f for f in dataset.columns if ('MONTH' not in f and 'mo.' not in f)]
+    valid_data = dataset.sample(frac=ratio).reset_index(drop=True)
+    train_data = dataset.drop(valid_data.index).reset_index(drop=True)
 
-    # evaluation mode
-    if ratio is None:
-        eval_dataset = WellDataset(dataset, total_features, train=False, exam=True)
-        return eval_dataset
+    train_dataset = WellDataset(train_data, total_features, train=True)
+    valid_dataset = WellDataset(valid_data, total_features, train=False)
 
-    # training mode
-    else:
-        valid_data = dataset.sample(frac=ratio).reset_index(drop=True)
-        train_data = dataset.drop(valid_data.index).reset_index(drop=True)
+    return train_dataset, valid_dataset
 
-        train_dataset = WellDataset(train_data, total_features, train=True)
-        valid_dataset = WellDataset(valid_data, total_features, train=False)
 
-        return train_dataset, valid_dataset
+def exam_loader(train_data, exam_data, norm_dict, value_feats, string_feats, remove_feats=None):
+    """
+    Preprocesses exam datasets via normalizing and removing unnecessary features.
+    Also one-hot-encodes string features.
+    Parameters
+    ----------
+    train_data: pandas.DataFrame
+        This is required in order to align the dummy values.
+    exam_data: pandas.DataFrame
+    norm_dict: dict
+    value_feats: list
+    string_feats: list
+    remove_feats: (optional) list
+    Returns
+    -------
+    exam_dataset: WellDataset
+    """
+    if remove_feats is not None:
+        train_data = train_data.drop(remove_feats, axis=1)
+        exam_data = exam_data.drop(remove_feats, axis=1)
+
+    train_index = train_data.index
+    dataset = pd.concat([exam_data, train_data]).reset_index(drop=True)
+
+    # imputes missing data
+    num_imputer = SimpleImputer(strategy='mean')
+    cat_imputer = SimpleImputer(strategy='most_frequent')
+    dataset[value_feats] = num_imputer.fit_transform(dataset[value_feats])
+    dataset[string_feats] = cat_imputer.fit_transform(dataset[string_feats])
+
+    dataset = pd.get_dummies(dataset, columns=string_feats)
+    for feats in norm_dict:
+        dataset[feats] /= float(norm_dict[feats])
+
+    # dataugmentation / inplace addition of data
+    dataset = augment_data(dataset)
+    dataset = dataset.drop(train_index).reset_index(drop=True)
+
+    # remove decision related features
+    decision_feats = [col for col in dataset.columns if '$' in col]
+    dataset = dataset.drop(decision_feats, axis=1)
+
+    total_features = [f for f in dataset.columns if ('MONTH' not in f and 'mo.' not in f)]
+    exam_dataset = WellDataset(dataset, total_features, train=False, exam=True)
+
+    return exam_dataset
 
 
 def augment_data(dataset):

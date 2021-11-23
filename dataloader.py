@@ -255,6 +255,7 @@ class WellDataset(Dataset):
         hrs = np.array(self.dataset[[f'HRS_MONTH_{j}' for j in range(1, 31)]].loc[idx])
 
         sequences = torch.tensor(np.concatenate([gas, cnd, hrs], axis=0))
+        sequences = sequences if self.has_sequence else torch.empty(0)
         static_features = torch.tensor(self.dataset[self.features].loc[idx])
 
         target = torch.zeros(1)

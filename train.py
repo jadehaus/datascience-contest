@@ -14,7 +14,7 @@ from model import LSTMPredictor, FeatureMLP, SequenceMLP, LPSolver
 from utilities import *
 
 
-def process(model, data_loader, optimizer=None, sequence=True, device='cpu'):
+def process(model, data_loader, optimizer=None, device='cpu'):
     """
     Process samples. If an optimizer is given, also train on those samples.
     Parameters
@@ -25,8 +25,6 @@ def process(model, data_loader, optimizer=None, sequence=True, device='cpu'):
         Pre-loaded dataset of training samples.
     optimizer: torch.optim (optional)
         Optimizer object. If not None, will be used for updating the model parameters.
-    sequence: bool (optional)
-        True if the data includes sequences.
     device: torch.device
     Returns
     -------
@@ -42,7 +40,7 @@ def process(model, data_loader, optimizer=None, sequence=True, device='cpu'):
             features = samples['features'].float().to(device)
             label = samples['target'].float()
 
-            data = torch.cat((features, sequences), dim=1) if sequence else features
+            data = torch.cat((features, sequences), dim=1)
             prediction = model(data).view(-1).cpu() * 1e5
 
             loss = F.mse_loss(prediction, label, reduction='sum')
@@ -57,7 +55,7 @@ def process(model, data_loader, optimizer=None, sequence=True, device='cpu'):
 
 
 def train(model, optimizer, scheduler, dataset, save_dir,
-          logfile=None, sequence=True, ratio=0.2, device='cpu'):
+          logfile=None, ratio=0.2, device='cpu'):
     """
     Trains the model given optimizera and scheduler.
     Returns the final parameter of the trained model.
@@ -75,8 +73,6 @@ def train(model, optimizer, scheduler, dataset, save_dir,
         Directory for saving model parameters.
     logfile: str (optional)
         Logfile directory for saving the logs.
-    sequence: bool (optional)
-        True if the data contains seqeunces.
     ratio: float in [0, 1]
         ratio for train and valid dataset split.
     device: torch.device
@@ -86,7 +82,7 @@ def train(model, optimizer, scheduler, dataset, save_dir,
     """
     # Printing model info and configure param file
     log(f"Model info: \n{model}", logfile, verbose=False)
-    param_name = 'sequence' if sequence else 'feature'
+    param_name = 'sequence' if dataset.has_sequence else 'feature'
     param_dir = pathlib.Path(os.path.join(save_dir, f"best_params_{param_name}.pkl"))
 
     # Split into train and valid set for feature dataset and sequence dataset respectively
@@ -98,8 +94,8 @@ def train(model, optimizer, scheduler, dataset, save_dir,
 
     for epoch in range(scheduler.max_epoch):
         log(f"EPOCH {epoch}...", logfile)
-        train_loss = process(model, train_loader, optimizer=optimizer, sequence=sequence, device=device)
-        valid_loss = process(model, valid_loader, optimizer=None, sequence=sequence, device=device)
+        train_loss = process(model, train_loader, optimizer=optimizer, device=device)
+        valid_loss = process(model, valid_loader, optimizer=None, device=device)
 
         log(f"  Train loss: {train_loss.pow(0.5)}", logfile)
         log(f"  Valid loss: {valid_loss.pow(0.5)}", logfile)
@@ -113,21 +109,19 @@ def train(model, optimizer, scheduler, dataset, save_dir,
             break
 
     model.load_state_dict(torch.load(param_dir))
-    valid_loss = process(model, valid_loader, optimizer=None, sequence=sequence, device=device)
+    valid_loss = process(model, valid_loader, optimizer=None, device=device)
     log(f"  BEST VALID LOSS: {np.sqrt(valid_loss)}", logfile)
 
     return model.state_dict()
 
 
-def evaluate(model, test_loader, sequence=True):
+def evaluate(model, test_loader):
     """
     Evaluates the model and make predictions with data in test_loader.
     Parameters
     ----------
     model: torch.nn.Module
     test_loader: torch.utils.data.DataLoader
-    sequence: (optional) bool
-        true if the data has sequences
     Returns
     -------
     predictions: list
@@ -138,7 +132,7 @@ def evaluate(model, test_loader, sequence=True):
             sequences = samples['sequences'].to(device)
             features = samples['features'].float().to(device)
 
-            data = torch.cat((features, sequences), dim=1) if sequence else features
+            data = torch.cat((features, sequences), dim=1)
             production = model(data).view(-1).cpu().detach().numpy()
             predictions.extend(production * 1e5)
 
@@ -219,16 +213,16 @@ if __name__ == '__main__':
     model_feature = FeatureMLP().to(device)
     optimizer = torch.optim.Adam(model_feature.parameters(), lr=lr)
     scheduler = Scheduler(patience=patience, max_epoch=max_epoch)
-    train(model_feature, optimizer, scheduler, feature_dataset, save_dir,
-          logfile=logfile, sequence=False, ratio=ratio, device=device)
+    train(model_feature, optimizer, scheduler, feature_dataset,
+          save_dir, logfile=logfile, ratio=ratio, device=device)
 
     # Import and train model for sequence data
     log("Training SequenceMLP", logfile)
     model_sequence = SequenceMLP().to(device)
     optimizer = torch.optim.Adam(model_sequence.parameters(), lr=lr)
     scheduler = Scheduler(patience=patience, max_epoch=max_epoch)
-    train(model_sequence, optimizer, scheduler, sequence_dataset, save_dir,
-          logfile=logfile, sequence=True, ratio=ratio, device=device)
+    train(model_sequence, optimizer, scheduler, sequence_dataset,
+          save_dir, logfile=logfile, ratio=ratio, device=device)
 
     # Make predictions with the exam data
     test_file = pd.read_csv(test_root_path)
@@ -236,8 +230,8 @@ if __name__ == '__main__':
     feature_test = DataLoader(feature_test, batch_size=batch_size, shuffle=False)
     sequence_test = DataLoader(sequence_test, batch_size=batch_size, shuffle=False)
 
-    feature_predictions = evaluate(model_feature, feature_test, sequence=False)
-    sequence_predictions = evaluate(model_sequence, sequence_test, sequence=True)
+    feature_predictions = evaluate(model_feature, feature_test)
+    sequence_predictions = evaluate(model_sequence, sequence_test)
 
     predictions = feature_predictions + sequence_predictions
     submission_file = os.path.join(save_dir, 'submission.csv')

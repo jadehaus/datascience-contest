@@ -25,9 +25,13 @@ def seq_tensor(gas, cnd, hrs, n=(1e5, 1e4, 1e3)):
         if h == 0:
             rest += 1
         else:
-            rates = [gas[j]/(n[0] * hrs[j]), cnd[j]/(n[1] * hrs[j]), hrs[j]/n[2], rest]
+            gas_norm, cnd_norm, hrs_norm = gas[j]/n[0], cnd[j]/n[1], hrs[j]/n[2]
+            rates = [gas_norm/hrs_norm, cnd_norm/hrs_norm, hrs_norm, rest]
             sequences.append(rates)
             rest = 0
+
+    if not sequences:
+        return torch.zeros(1, 4)
 
     return torch.tensor(sequences)
 
@@ -59,7 +63,7 @@ def seq_collate(batch):
     return padded_batch
 
 
-def preprocess(dataset, normalize_dict, value_feats, string_feats, remove_feats=None, ratio=0.2):
+def preprocess(dataset, normalize_dict, remove_feats=None, augment=False):
     """
     Preprocesses datasets via normalizing and removing unnecessary features.
     Also one-hot-encodes string features.
@@ -67,43 +71,56 @@ def preprocess(dataset, normalize_dict, value_feats, string_feats, remove_feats=
     ----------
     dataset: pandas.DataFrame
     normalize_dict: dict
-    value_feats: list
-    string_feats: list
     remove_feats: (optional) list
-    ratio: float in [0, 1]
-        fraction value for the size of validation dataset
+    augment: (optional) bool
+        augments and reproduces data if true
     Returns
     -------
-    train_dataset: WellDataset
-    valid_dataset: WellDataset
+    feature_dataset: WellDataset
+    sequence_dataset: WellDataset
     """
     if remove_feats is not None:
         dataset = dataset.drop(remove_feats, axis=1)
 
-    # imputes missing data
-    num_imputer = SimpleImputer(strategy='mean')
-    cat_imputer = SimpleImputer(strategy='most_frequent')
-    dataset[value_feats] = num_imputer.fit_transform(dataset[value_feats])
-    dataset[string_feats] = cat_imputer.fit_transform(dataset[string_feats])
+    # types of features
+    string_feats = dataset.select_dtypes(include='object').columns.tolist()
+    value_feats = dataset.select_dtypes(include=np.number).columns.tolist()
+    value_feats = [f for f in value_feats if ('MONTH' not in f and 'mo.' not in f)]
 
-    dataset = pd.get_dummies(dataset, columns=string_feats)
+    # maps the direction to an angle
+    direction = 'Bot-Hole direction (N/S)/(E/W)'
+    dataset[direction] = np.arctan(dataset[direction])
+
+    # imputes missing data and one-hot encodes if necessary
+    if value_feats:
+        num_imputer = SimpleImputer(strategy='mean')
+        dataset[value_feats] = num_imputer.fit_transform(dataset[value_feats])
+    if string_feats:
+        cat_imputer = SimpleImputer(strategy='most_frequent')
+        dataset[string_feats] = cat_imputer.fit_transform(dataset[string_feats])
+        dataset = pd.get_dummies(dataset, columns=string_feats)
+
+    # normalize data
     for feats in normalize_dict:
         dataset[feats] /= float(normalize_dict[feats])
 
-    # dataugmentation / inplace addition of data
-    dataset = augment_data(dataset)
+    # split into data w/ or w/o sequence data
+    target_name = 'Last 6 mo. Avg. GAS (Mcf)'
+    feature_dataset = dataset
+    sequence_dataset = dataset.dropna(subset=[target_name]).reset_index(drop=True)
+
+    # data augmentation / inplace addition of data
+    if augment:
+        sequence_dataset = augment_data(sequence_dataset)
 
     total_features = [f for f in dataset.columns if ('MONTH' not in f and 'mo.' not in f)]
-    valid_data = dataset.sample(frac=ratio).reset_index(drop=True)
-    train_data = dataset.drop(valid_data.index).reset_index(drop=True)
+    sequence_dataset = WellDataset(sequence_dataset, total_features, sequence=True)
+    feature_dataset = WellDataset(feature_dataset, total_features, sequence=False)
 
-    train_dataset = WellDataset(train_data, total_features, train=True)
-    valid_dataset = WellDataset(valid_data, total_features, train=False)
-
-    return train_dataset, valid_dataset
+    return feature_dataset, sequence_dataset
 
 
-def exam_loader(train_data, exam_data, norm_dict, value_feats, string_feats, remove_feats=None):
+def exam_loader(train_data, exam_data, norm_dict, remove_feats=None):
     """
     Preprocesses exam datasets via normalizing and removing unnecessary features.
     Also one-hot-encodes string features.
@@ -113,8 +130,6 @@ def exam_loader(train_data, exam_data, norm_dict, value_feats, string_feats, rem
         This is required in order to align the dummy values.
     exam_data: pandas.DataFrame
     norm_dict: dict
-    value_feats: list
-    string_feats: list
     remove_feats: (optional) list
     Returns
     -------
@@ -127,33 +142,51 @@ def exam_loader(train_data, exam_data, norm_dict, value_feats, string_feats, rem
     train_index = train_data.index
     dataset = pd.concat([exam_data, train_data]).reset_index(drop=True)
 
-    # imputes missing data
-    num_imputer = SimpleImputer(strategy='mean')
-    cat_imputer = SimpleImputer(strategy='most_frequent')
-    dataset[value_feats] = num_imputer.fit_transform(dataset[value_feats])
-    dataset[string_feats] = cat_imputer.fit_transform(dataset[string_feats])
+    # types of features
+    string_feats = dataset.select_dtypes(include='object').columns.tolist()
+    value_feats = dataset.select_dtypes(include=np.number).columns.tolist()
+    value_feats = [f for f in value_feats if ('MONTH' not in f and 'mo.' not in f)]
 
-    dataset = pd.get_dummies(dataset, columns=string_feats)
+    # maps the direction to an angle
+    direction = 'Bot-Hole direction (N/S)/(E/W)'
+    dataset[direction] = np.arctan(dataset[direction])
+
+    # imputes missing data and one-hot encodes if necessary
+    if value_feats:
+        num_imputer = SimpleImputer(strategy='mean')
+        dataset[value_feats] = num_imputer.fit_transform(dataset[value_feats])
+    if string_feats:
+        cat_imputer = SimpleImputer(strategy='most_frequent')
+        dataset[string_feats] = cat_imputer.fit_transform(dataset[string_feats])
+        dataset = pd.get_dummies(dataset, columns=string_feats)
+
+    # normalize data
     for feats in norm_dict:
         dataset[feats] /= float(norm_dict[feats])
 
-    # dataugmentation / inplace addition of data
-    dataset = augment_data(dataset)
+    # remove train dataset back again
     dataset = dataset.drop(train_index).reset_index(drop=True)
 
     # remove decision related features
     decision_feats = [col for col in dataset.columns if '$' in col]
     dataset = dataset.drop(decision_feats, axis=1)
 
-    total_features = [f for f in dataset.columns if ('MONTH' not in f and 'mo.' not in f)]
-    exam_dataset = WellDataset(dataset, total_features, train=False, exam=True)
+    # split into data w/ or w/o sequence data
+    target_name = 'Last 6 mo. Avg. GAS (Mcf)'
+    feature_dataset = dataset[dataset[target_name].isna()]
+    sequence_dataset = dataset.dropna(subset=[target_name]).reset_index(drop=True)
 
-    return exam_dataset
+    total_features = [f for f in dataset.columns if ('MONTH' not in f and 'mo.' not in f)]
+    exam_feature_dataset = WellDataset(feature_dataset, total_features, sequence=False, exam=True)
+    exam_sequence_dataset = WellDataset(sequence_dataset, total_features, sequence=True, exam=True)
+
+    return exam_feature_dataset, exam_sequence_dataset
 
 
 def augment_data(dataset):
     """
-    LJW, 20211109 added. elongate dataset / make label and sequence
+    Append additional data rows to the pandas.dataframe,
+    where the new row consists of partial subsequences of gas, cnd, and hrs.
     Parameters
     ----------
     dataset: pandas.DataFrame
@@ -161,6 +194,36 @@ def augment_data(dataset):
     -------
     dataset: pandas.DataFrame
     """
+    target = 'Last 6 mo. Avg. GAS (Mcf)'
+    gas_sequences = [f'GAS_MONTH_{j}' for j in range(1, 37)]
+    sequences = dataset.dropna(subset=gas_sequences).reset_index(drop=True)
+
+    # Appending additional subsequences to the rows
+    data_list = []
+    for idx in range(sequences.shape[0]):
+        for t in range(1, 30):
+
+            # Do not append when the production stopped for at least a month
+            target_hrs = [f'HRS_MONTH_{j}' for j in range(t+1, t+7)]
+            if 0 in list(sequences.iloc[idx][target_hrs]):
+                continue
+
+            row = sequences.copy().iloc[idx]
+            hrs = [f'HRS_MONTH_{j}' for j in range(t+1, 37)]
+            gas = [f'GAS_MONTH_{j}' for j in range(t+1, 37)]
+            cnd = [f'CND_MONTH_{j}' for j in range(t+1, 37)]
+
+            # Changing the target value for the last 6 months
+            target_gas = [f'GAS_MONTH_{j}' for j in range(t+1, t+7)]
+            row[target] = sum(row[target_gas]) / len(target_gas)
+            row[hrs], row[gas], row[cnd] = 0, 0, 0
+
+            data_list.append(dict(row))
+
+    df = pd.DataFrame(data_list)
+    dataset = pd.concat([dataset, df], axis=0, ignore_index=True)
+    dataset.reset_index(drop=True)
+
     return dataset
 
 
@@ -172,14 +235,14 @@ class WellDataset(Dataset):
     dataset: pandas.DataFrame
     features: list
     gas_norm: float (optional)
-    train: bool (optional)
-    eval: bool (optional)
+    sequence: bool (optional)
+    exam: bool (optional)
     """
-    def __init__(self, dataset, features, gas_norm=1e5, train=True, exam=False):
+    def __init__(self, dataset, features, gas_norm=1, sequence=False, exam=False):
         self.dataset = dataset
         self.features = features
-        self.train = train
         self.gas_norm = gas_norm
+        self.has_sequence = sequence
         self.exam = exam
 
     def __len__(self):
@@ -187,18 +250,16 @@ class WellDataset(Dataset):
 
     def __getitem__(self, idx):
 
-        mth = 37 if self.train else 31
-        gas = self.dataset[[f'GAS_MONTH_{j}' for j in range(1, mth)]].loc[idx]
-        cnd = self.dataset[[f'CND_MONTH_{j}' for j in range(1, mth)]].loc[idx]
-        hrs = self.dataset[[f'HRS_MONTH_{j}' for j in range(1, mth)]].loc[idx]
+        gas = np.array(self.dataset[[f'GAS_MONTH_{j}' for j in range(1, 31)]].loc[idx])
+        cnd = np.array(self.dataset[[f'CND_MONTH_{j}' for j in range(1, 31)]].loc[idx])
+        hrs = np.array(self.dataset[[f'HRS_MONTH_{j}' for j in range(1, 31)]].loc[idx])
 
-        sequences = seq_tensor(gas, cnd, hrs)
-        empty_sequence = (len(sequences) == 1)
+        sequences = torch.tensor(np.concatenate([gas, cnd, hrs], axis=0))
         static_features = torch.tensor(self.dataset[self.features].loc[idx])
 
         target = torch.zeros(1)
         if not self.exam:
-            target_name = 'First 6 mo. Avg. GAS (Mcf)' if empty_sequence else 'Last 6 mo. Avg. GAS (Mcf)'
+            target_name = 'Last 6 mo. Avg. GAS (Mcf)' if self.has_sequence else 'First 6 mo. Avg. GAS (Mcf)'
             target = torch.tensor(self.dataset[target_name].loc[idx]/self.gas_norm)
 
         sample = {'features': static_features, 'sequences': sequences, 'target': target}

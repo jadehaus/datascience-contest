@@ -10,50 +10,11 @@ import argparse
 import yaml
 
 from dataloader import seq_collate, preprocess, exam_loader
-from model import Predictor
-from datetime import datetime
+from model import LSTMPredictor, FeatureMLP, SequenceMLP, LPSolver
+from utilities import *
 
 
-def str_current_time():
-    """
-    Returns the current time in readable string.
-    """
-    now = datetime.now()
-    current_datetime = \
-        str(now.year) + \
-        str('%02d' % now.month) + \
-        str('%02d' % now.day) + \
-        str('%02d' % now.hour) + \
-        str(now.strftime('%M')) + \
-        str(now.strftime('%S'))
-
-    return current_datetime
-
-
-def log(str, logfile=None):
-    """
-    Prints the provided string, and also logs it if a logfile is passed.
-    Parameters
-    ----------
-    str : str
-        String to be printed/logged.
-    logfile : str (optional)
-        File to log into.
-    """
-    str = f'[{datetime.now()}] {str}'
-    print(str)
-    if logfile is not None:
-        # file existence
-        if not os.path.isfile(logfile):
-            with open(logfile, mode='w') as f:
-                print(str, file=f)
-                f.close()
-        else:
-            with open(logfile, mode='a') as f:
-                print(str, file=f)
-
-
-def process(model, data_loader, optimizer=None, device='cpu'):
+def process(model, data_loader, optimizer=None, sequence=True, device='cpu'):
     """
     Process samples. If an optimizer is given, also train on those samples.
     Parameters
@@ -64,6 +25,8 @@ def process(model, data_loader, optimizer=None, device='cpu'):
         Pre-loaded dataset of training samples.
     optimizer: torch.optim (optional)
         Optimizer object. If not None, will be used for updating the model parameters.
+    sequence: bool (optional)
+        True if the data includes sequences.
     device: torch.device
     Returns
     -------
@@ -71,18 +34,18 @@ def process(model, data_loader, optimizer=None, device='cpu'):
         Mean MSE loss.
     """
     total_loss = 0
-    n_data = len(data_loader)
+    n_data = len(data_loader.dataset)
 
     with torch.set_grad_enabled(optimizer is not None):
         for _, samples in enumerate(data_loader):
             sequences = samples['sequences'].to(device)
             features = samples['features'].float().to(device)
-            label = samples['target'].float().to(device)
+            label = samples['target'].float()
 
-            data = (sequences, features)
-            prediction = model(data).view(-1).cpu()
+            data = torch.cat((features, sequences), dim=1) if sequence else features
+            prediction = model(data).view(-1).cpu() * 1e5
 
-            loss = F.mse_loss(prediction, label, reduction='mean')
+            loss = F.mse_loss(prediction, label, reduction='sum')
             total_loss += loss
 
             if optimizer is not None:
@@ -93,31 +56,93 @@ def process(model, data_loader, optimizer=None, device='cpu'):
     return total_loss / n_data
 
 
-class Scheduler:
+def train(model, optimizer, scheduler, dataset, save_dir,
+          logfile=None, sequence=True, ratio=0.2, device='cpu'):
     """
-    Custom scheduler class that early-stops the optimization process
+    Trains the model given optimizera and scheduler.
+    Returns the final parameter of the trained model.
     Parameters
     ----------
-    patience: int
-        a number of bad epochs that can be endured until early-stop
+    model: torch.nn.Module
+        Model to train.
+    optimizer: torch.optim (optional)
+        Optimizer object. If not None, will be used for updating the model parameters.
+    scheduler: class
+        A scheduler for training process.
+    dataset: torch.utils.data.Dataset
+        Pre-loaded dataset of training samples.
+    save_dir: str
+        Directory for saving model parameters.
+    logfile: str (optional)
+        Logfile directory for saving the logs.
+    sequence: bool (optional)
+        True if the data contains seqeunces.
+    ratio: float in [0, 1]
+        ratio for train and valid dataset split.
+    device: torch.device
+    Returns
+    -------
+    model.state_dict(): dict
     """
-    def __init__(self, patience=10):
-        self.patience = patience
-        self.num_bad_epoch = 0
-        self.best_loss = 1e9
+    # Printing model info and configure param file
+    log(f"Model info: \n{model}", logfile, verbose=False)
+    param_name = 'sequence' if sequence else 'feature'
+    param_dir = pathlib.Path(os.path.join(save_dir, f"best_params_{param_name}.pkl"))
 
-    def step(self, loss):
-        """
-        calculates a number of bad epochs and checks tolerences.
-        Parameters
-        ----------
-        loss: float
-        """
-        if loss < self.best_loss:
-            self.best_loss = loss
-            self.num_bad_epoch = 0
-        else:
-            self.num_bad_epoch += 1
+    # Split into train and valid set for feature dataset and sequence dataset respectively
+    train_valid_split = [len(dataset) - int(len(dataset) * ratio), int(len(dataset) * ratio)]
+    train_dataset, valid_dataset = random_split(dataset, train_valid_split)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True)
+
+    for epoch in range(scheduler.max_epoch):
+        log(f"EPOCH {epoch}...", logfile)
+        train_loss = process(model, train_loader, optimizer=optimizer, sequence=sequence, device=device)
+        valid_loss = process(model, valid_loader, optimizer=None, sequence=sequence, device=device)
+
+        log(f"  Train loss: {train_loss.pow(0.5)}", logfile)
+        log(f"  Valid loss: {valid_loss.pow(0.5)}", logfile)
+
+        scheduler.step(valid_loss)
+        if scheduler.num_bad_epoch == 0:
+            log(f"  Best model so far. Saving parameters...", logfile)
+            torch.save(model.state_dict(), param_dir)
+        elif scheduler.num_bad_epoch == scheduler.patience:
+            log(f"  {patience} epochs without improvement, early stopping", logfile)
+            break
+
+    model.load_state_dict(torch.load(param_dir))
+    valid_loss = process(model, valid_loader, optimizer=None, sequence=sequence, device=device)
+    log(f"  BEST VALID LOSS: {np.sqrt(valid_loss)}", logfile)
+
+    return model.state_dict()
+
+
+def evaluate(model, test_loader, sequence=True):
+    """
+    Evaluates the model and make predictions with data in test_loader.
+    Parameters
+    ----------
+    model: torch.nn.Module
+    test_loader: torch.utils.data.DataLoader
+    sequence: (optional) bool
+        true if the data has sequences
+    Returns
+    -------
+    predictions: list
+    """
+    predictions = []
+    with torch.set_grad_enabled(False):
+        for _, samples in enumerate(test_loader):
+            sequences = samples['sequences'].to(device)
+            features = samples['features'].float().to(device)
+
+            data = torch.cat((features, sequences), dim=1) if sequence else features
+            production = model(data).view(-1).cpu().detach().numpy()
+            predictions.extend(production * 1e5)
+
+    return predictions
 
 
 if __name__ == '__main__':
@@ -138,9 +163,9 @@ if __name__ == '__main__':
 
     # Hyperparameters
     max_epoch = 100
-    batch_size = 4
-    ratio = 0.2
-    lr = 1e-4
+    batch_size = 16
+    ratio = 0.3
+    lr = 1e-3
     patience = 10
 
     # Working directory setup
@@ -151,21 +176,8 @@ if __name__ == '__main__':
     # Debug argument setup
     if args.debug:
         save_dir = os.path.join('./saved_params', 'debug')
-        max_epoch = 10
+        max_epoch = 5
         patience = 1
-
-    # Setup Training Data
-    train_root_path = "./datasets/trainSet.csv"
-    test_root_path = "./datasets/examSet.csv"
-    norm_dict = loader_config['norm_factor_dict']
-    values = loader_config['value_features']
-    strings = loader_config['string_features']
-    removes = loader_config['remove_features']
-
-    train_file = pd.read_csv(train_root_path)
-    train_dataset, valid_dataset = preprocess(train_file, norm_dict, values, strings, removes, ratio=ratio)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=seq_collate)
-    valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True, collate_fn=seq_collate)
 
     # cuda setup
     if args.gpu == -1:
@@ -175,11 +187,6 @@ if __name__ == '__main__':
         device_num = int(float(args.gpu))
         torch.cuda.set_device(device_num)
         device = torch.device('cuda')
-
-    # Import and train model
-    model = Predictor().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    scheduler = Scheduler(patience=patience)
 
     # logging setup
     os.makedirs(save_dir, exist_ok=True)
@@ -193,40 +200,47 @@ if __name__ == '__main__':
     log(f"Learning rate: {lr}", logfile)
     log(f"Device: {device}")
 
-    for epoch in range(max_epoch):
-        log(f"EPOCH {epoch}...", logfile)
-        train_loss = process(model, train_loader, optimizer=optimizer, device=device)
-        valid_loss = process(model, valid_loader, optimizer=None, device=device)
+    # Setup Training Data
+    train_root_path = "./datasets/trainSet.csv"
+    test_root_path = "./datasets/examSet.csv"
+    norm_dict = loader_config['norm_factor_dict']
+    removes = loader_config['remove_features']
 
-        log(f"  Train loss: {train_loss}", logfile)
-        log(f"  Valid loss: {valid_loss}", logfile)
+    log(f"Initiating data augmentation...", logfile)
+    train_file = pd.read_csv(train_root_path)
+    feature_dataset, sequence_dataset = preprocess(train_file, norm_dict, removes)
+    log(f"Data loading completed. "
+        f"{len(feature_dataset)} total feature data and "
+        f"{len(sequence_dataset)} sequence data.", logfile)
+    log(f"Configuration Information: \n{loader_config}", logfile, verbose=False)
 
-        scheduler.step(valid_loss)
-        if scheduler.num_bad_epoch == 0:
-            log(f"  Best model so far. Saving parameters...", logfile)
-            torch.save(model.state_dict(), pathlib.Path(os.path.join(save_dir, "best_params.pkl")))
-        elif scheduler.num_bad_epoch == scheduler.patience:
-            log(f"  {patience} epochs without improvement, early stopping", logfile)
-            break
+    # Import and train model for feature data
+    log("Training FeatureMLP", logfile)
+    model_feature = FeatureMLP().to(device)
+    optimizer = torch.optim.Adam(model_feature.parameters(), lr=lr)
+    scheduler = Scheduler(patience=patience, max_epoch=max_epoch)
+    train(model_feature, optimizer, scheduler, feature_dataset, save_dir,
+          logfile=logfile, sequence=False, ratio=ratio, device=device)
 
-    model.load_state_dict(torch.load(pathlib.Path(os.path.join(save_dir, 'best_params.pkl'))))
-    valid_loss = process(model, valid_loader, optimizer=None, device=device)
-    log(f"  BEST VALID LOSS: {valid_loss}", logfile)
+    # Import and train model for sequence data
+    log("Training SequenceMLP", logfile)
+    model_sequence = SequenceMLP().to(device)
+    optimizer = torch.optim.Adam(model_sequence.parameters(), lr=lr)
+    scheduler = Scheduler(patience=patience, max_epoch=max_epoch)
+    train(model_sequence, optimizer, scheduler, sequence_dataset, save_dir,
+          logfile=logfile, sequence=True, ratio=ratio, device=device)
 
     # Make predictions with the exam data
     test_file = pd.read_csv(test_root_path)
-    test_dataset = exam_loader(train_file, test_file, norm_dict, values, strings, removes)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=seq_collate)
+    feature_test, sequence_test = exam_loader(train_file, test_file, norm_dict, removes)
+    feature_test = DataLoader(feature_test, batch_size=batch_size, shuffle=False)
+    sequence_test = DataLoader(sequence_test, batch_size=batch_size, shuffle=False)
 
-    predictions = []
-    with torch.set_grad_enabled(False):
-        for _, samples in enumerate(test_loader):
-            sequences = samples['sequences'].to(device)
-            features = samples['features'].float().to(device)
-            label = samples['target'].float().to(device)
+    feature_predictions = evaluate(model_feature, feature_test, sequence=False)
+    sequence_predictions = evaluate(model_sequence, sequence_test, sequence=True)
 
-            data = (sequences, features)
-            production = model(data).view(-1).cpu().detach().numpy()
-            predictions.extend(production * 1e5)
-
-    log(f'Predicted gas productions for exam dataset: \n{predictions}', logfile)
+    predictions = feature_predictions + sequence_predictions
+    submission_file = os.path.join(save_dir, 'submission.csv')
+    solver = LPSolver(predictions, test_file)
+    solver.export(submission_file)
+    log(f'Submission file successfully exported to {submission_file}', logfile)

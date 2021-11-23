@@ -1,0 +1,42 @@
+# Feature Setup
+value_features: ['Reference (KB) Elev. (ft)', 'Ground Elevation (ft)', 'MD (All Wells) (ft)',
+           'TVD (ft)', 'Bot-Hole direction (N/S)/(E/W)', 'Bot-Hole Easting (NAD83)',
+           'Bot-Hole Northing (NAD83)', 'Total Proppant Placed (tonne)',
+           'Avg Proppant Placed per Stage (tonne)', 'Total Fluid Pumped (m3)',
+           'Stages Actual', 'Completed Length (m)', 'Avg Frac Spacing (m)',
+           'Load Fluid Rec (m3)', 'Load Fluid (m3)', 'Avg Fluid Pumped / Meter (m3)',
+           'Avg Proppant Placed / Meter (tonne)', 'Avg Proppant 1 Placed (tonne)',
+           'Total Proppant 1 Placed (tonne)',  'Total Ceramic Proppant Placed (tonne)',
+           'Total Sand Proppant Placed (tonne)', 'Avg Fluid Pumped per Stage (m3)',
+           'Avg Proppant Placed per Stage (tonne)']
+string_features: ['Stimulation Fluid', 'Proppant Composition']
+remove_features: ['On Prod YYYY/MM/DD', 'First Prod YYYY/MM', 'Last Prod. YYYY/MM',
+                  'No', 'CPA Pretty Well ID', # 'Total Ceramic Proppant Placed (tonne)',
+                  'Proppant Size 1', 'Proppant Name 1']
+decision_features: ['PRICE ($)', 'Per Month Operation Cost ($)']
+
+norm_factor_dict:
+  'Reference (KB) Elev. (ft)': 1e4
+  'Ground Elevation (ft)': 1e4
+  'MD (All Wells) (ft)': 1e5
+  'TVD (ft)': 1e5
+  'Bot-Hole direction (N/S)/(E/W)': 1
+  'Bot-Hole Easting (NAD83)': 1
+  'Bot-Hole Northing (NAD83)': 1
+  'Total Proppant Placed (tonne)': 1e4
+  'Avg Proppant Placed per Stage (tonne)': 1e3
+  'Total Fluid Pumped (m3)': 1e5
+  'Avg Fluid Pumped per Stage (m3)': 1e3
+  'Stages Actual': 1e2
+  'Completed Length (m)': 1e4
+  'Avg Frac Spacing (m)': 1e2
+  'Load Fluid Rec (m3)': 1e4  # This has lot of missing values
+  'Load Fluid (m3)': 1e5
+  'Avg Fluid Pumped / Meter (m3)': 1e2
+  'Avg Proppant Placed / Meter (tonne)': 1e1
+  'Avg Proppant 1 Placed (tonne)': 1e2
+  'Total Proppant 1 Placed (tonne)': 1e4
+  'Total Ceramic Proppant Placed (tonne)': 1e4  # give a lot of penealty since many are missing
+  'Total Sand Proppant Placed (tonne)': 1e4
+
+# 'Load Fluid Rec (m3)', 'Proppant Size 1'

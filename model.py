@@ -68,16 +68,23 @@ class FeatureMLP(nn.Module):
             number of recurrent layers
         """
 
-    def __init__(self, feature_dim=22, emb_size=64):
+    def __init__(self, feature_dim=22, emb_size=24):
         super().__init__()
         self.fc = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
+            nn.BatchNorm1d(emb_size),
+            nn.ReLU(),
+            nn.Linear(emb_size, emb_size),
             nn.BatchNorm1d(emb_size),
             nn.ReLU(),
             nn.Linear(emb_size, 1)
         )
 
     def forward(self, data):
+
+        sequences, features = data
+        data = torch.cat((features, sequences), dim=1)
+
         output = self.fc(data.float())
         return output
 
@@ -96,16 +103,23 @@ class SequenceMLP(nn.Module):
             number of recurrent layers
         """
 
-    def __init__(self, feature_dim=112, emb_size=64):
+    def __init__(self, feature_dim=112, emb_size=128):
         super().__init__()
         self.fc = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
+            nn.BatchNorm1d(emb_size),
+            nn.ReLU(),
+            nn.Linear(emb_size, emb_size),
             nn.BatchNorm1d(emb_size),
             nn.ReLU(),
             nn.Linear(emb_size, 1)
         )
 
     def forward(self, data):
+
+        sequences, features = data
+        data = torch.cat((features, sequences), dim=1)
+
         output = self.fc(data.float())
         return output
 

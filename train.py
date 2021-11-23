@@ -39,10 +39,9 @@ def process(model, data_loader, optimizer=None, device='cpu'):
             sequences = samples['sequences'].to(device)
             features = samples['features'].float().to(device)
             label = samples['target'].float()
+            data = (sequences, features)
 
-            data = torch.cat((features, sequences), dim=1)
             prediction = model(data).view(-1).cpu() * 1e5
-
             loss = F.mse_loss(prediction, label, reduction='sum')
             total_loss += loss
 
@@ -89,8 +88,10 @@ def train(model, optimizer, scheduler, dataset, save_dir,
     train_valid_split = [len(dataset) - int(len(dataset) * ratio), int(len(dataset) * ratio)]
     train_dataset, valid_dataset = random_split(dataset, train_valid_split)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True)
+    # Passing data to torch.utils.data.DataLoader, use seq_collate for LSTM models
+    fn = seq_collate if model.__class__.__name__ == 'LSTMPredictor' else None
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=fn)
+    valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True, collate_fn=fn)
 
     for epoch in range(scheduler.max_epoch):
         log(f"EPOCH {epoch}...", logfile)
@@ -110,7 +111,7 @@ def train(model, optimizer, scheduler, dataset, save_dir,
 
     model.load_state_dict(torch.load(param_dir))
     valid_loss = process(model, valid_loader, optimizer=None, device=device)
-    log(f"  BEST VALID LOSS: {np.sqrt(valid_loss)}", logfile)
+    log(f"  BEST VALID LOSS: {valid_loss.pow(0.5)}", logfile)
 
     return model.state_dict()
 
@@ -131,8 +132,8 @@ def evaluate(model, test_loader):
         for _, samples in enumerate(test_loader):
             sequences = samples['sequences'].to(device)
             features = samples['features'].float().to(device)
+            data = (sequences, features)
 
-            data = torch.cat((features, sequences), dim=1)
             production = model(data).view(-1).cpu().detach().numpy()
             predictions.extend(production * 1e5)
 
@@ -156,11 +157,15 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Hyperparameters
-    max_epoch = 100
+    max_epoch = 500
     batch_size = 16
     ratio = 0.3
     lr = 1e-3
-    patience = 10
+    patience = 20
+
+    # Use augment option for more data, and pad option for LSTM models
+    augment = False
+    pad = False
 
     # Working directory setup
     loader_root = "./loader.yml"
@@ -202,23 +207,23 @@ if __name__ == '__main__':
 
     log(f"Initiating data augmentation...", logfile)
     train_file = pd.read_csv(train_root_path)
-    feature_dataset, sequence_dataset = preprocess(train_file, norm_dict, removes)
+    feature_dataset, sequence_dataset = preprocess(train_file, norm_dict, removes, augment=augment, pad=pad)
     log(f"Data loading completed. "
         f"{len(feature_dataset)} total feature data and "
         f"{len(sequence_dataset)} sequence data.", logfile)
     log(f"Configuration Information: \n{loader_config}", logfile, verbose=False)
 
     # Import and train model for feature data
-    log("Training FeatureMLP", logfile)
     model_feature = FeatureMLP().to(device)
+    log(f"Training {model_feature.__class__.__name__} for feature data", logfile)
     optimizer = torch.optim.Adam(model_feature.parameters(), lr=lr)
     scheduler = Scheduler(patience=patience, max_epoch=max_epoch)
     train(model_feature, optimizer, scheduler, feature_dataset,
           save_dir, logfile=logfile, ratio=ratio, device=device)
 
     # Import and train model for sequence data
-    log("Training SequenceMLP", logfile)
     model_sequence = SequenceMLP().to(device)
+    log(f"Training {model_sequence.__class__.__name__} for sequence data", logfile)
     optimizer = torch.optim.Adam(model_sequence.parameters(), lr=lr)
     scheduler = Scheduler(patience=patience, max_epoch=max_epoch)
     train(model_sequence, optimizer, scheduler, sequence_dataset,
@@ -226,9 +231,13 @@ if __name__ == '__main__':
 
     # Make predictions with the exam data
     test_file = pd.read_csv(test_root_path)
-    feature_test, sequence_test = exam_loader(train_file, test_file, norm_dict, removes)
-    feature_test = DataLoader(feature_test, batch_size=batch_size, shuffle=False)
-    sequence_test = DataLoader(sequence_test, batch_size=batch_size, shuffle=False)
+    feature_test, sequence_test = exam_loader(train_file, test_file, norm_dict, removes, pad=pad)
+
+    # Passing data to torch.utils.data.DataLoader, use seq_collate for LSTM models
+    fn_ft = seq_collate if model_feature.__class__.__name__ == 'LSTMPredictor' else None
+    fn_sq = seq_collate if model_sequence.__class__.__name__ == 'LSTMPredictor' else None
+    feature_test = DataLoader(feature_test, batch_size=batch_size, shuffle=False, collate_fn=fn_ft)
+    sequence_test = DataLoader(sequence_test, batch_size=batch_size, shuffle=False, collate_fn=fn_sq)
 
     feature_predictions = evaluate(model_feature, feature_test)
     sequence_predictions = evaluate(model_sequence, sequence_test)

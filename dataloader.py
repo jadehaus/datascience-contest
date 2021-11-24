@@ -103,7 +103,7 @@ def preprocess(dataset, normalize_dict, remove_feats=None, augment=False, pad=Tr
         dataset = pd.get_dummies(dataset, columns=string_feats)
 
     # normalize data
-    for feats in normalize_dict:
+    for feats in value_feats:
         dataset[feats] /= float(normalize_dict[feats])
 
     # split into data w/ or w/o sequence data
@@ -146,6 +146,10 @@ def exam_loader(train_data, exam_data, norm_dict, remove_feats=None, pad=True):
     train_index = train_data.index
     dataset = pd.concat([train_data, exam_data]).reset_index(drop=True)
 
+    # remove decision related features
+    decision_feats = [col for col in dataset.columns if '$' in col]
+    dataset = dataset.drop(decision_feats, axis=1)
+
     # types of features
     string_feats = dataset.select_dtypes(include='object').columns.tolist()
     value_feats = dataset.select_dtypes(include=np.number).columns.tolist()
@@ -165,15 +169,11 @@ def exam_loader(train_data, exam_data, norm_dict, remove_feats=None, pad=True):
         dataset = pd.get_dummies(dataset, columns=string_feats)
 
     # normalize data
-    for feats in norm_dict:
+    for feats in value_feats:
         dataset[feats] /= float(norm_dict[feats])
 
     # remove train dataset back again
     dataset = dataset.drop(train_index).reset_index(drop=True)
-
-    # remove decision related features
-    decision_feats = [col for col in dataset.columns if '$' in col]
-    dataset = dataset.drop(decision_feats, axis=1)
 
     # split into data w/ or w/o sequence data
     target_name = 'GAS_MONTH_1'

@@ -27,18 +27,18 @@ class LSTMPredictor(nn.Module):
     """
     def __init__(self, feature_dim=22, sequence_dim=4, hidden_dim=64, n_layers=2):
         super().__init__()
-        self.gru = nn.GRU(input_size=sequence_dim, hidden_size=hidden_dim,
-                          num_layers=n_layers, batch_first=True)
         emb_size = feature_dim + hidden_dim
-        self.fc = nn.Sequential(
-            nn.Linear(emb_size, emb_size),
-            nn.ReLU(),
-            nn.Linear(emb_size, 1)
-        )
         self.make_sos = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
             nn.ReLU(),
             nn.Linear(emb_size, sequence_dim)
+        )
+        self.gru = nn.GRU(input_size=sequence_dim, hidden_size=hidden_dim,
+                          num_layers=n_layers, batch_first=True)
+        self.fc = nn.Sequential(
+            nn.Linear(emb_size, emb_size),
+            nn.ReLU(),
+            nn.Linear(emb_size, 1)
         )
 
     def forward(self, data):
@@ -68,15 +68,15 @@ class FeatureMLP(nn.Module):
             number of recurrent layers
         """
 
-    def __init__(self, feature_dim=22, emb_size=24):
+    def __init__(self, feature_dim=22, emb_size=64):
         super().__init__()
         self.fc = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
-            nn.BatchNorm1d(emb_size),
+            # nn.BatchNorm1d(emb_size),
             nn.ReLU(),
-            nn.Linear(emb_size, emb_size),
-            nn.BatchNorm1d(emb_size),
-            nn.ReLU(),
+            # nn.Linear(emb_size, emb_size),
+            # nn.BatchNorm1d(emb_size),
+            # nn.ReLU(),
             nn.Linear(emb_size, 1)
         )
 
@@ -103,8 +103,10 @@ class SequenceMLP(nn.Module):
             number of recurrent layers
         """
 
-    def __init__(self, feature_dim=112, emb_size=128):
+    def __init__(self, feature_dim=22, emb_size=128):
         super().__init__()
+        sequence_dim = 90
+        feature_dim += sequence_dim
         self.fc = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
             nn.BatchNorm1d(emb_size),

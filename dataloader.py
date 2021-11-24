@@ -265,7 +265,7 @@ class WellDataset(Dataset):
             sequences = seq_tensor(gas, cnd, hrs)
         # Otherwise use below codes for simple MLP models
         else:
-            sequences = torch.tensor(np.concatenate([gas, cnd, hrs], axis=0))
+            sequences = torch.tensor(np.concatenate([gas/1e5, cnd/1e4, hrs/1e3], axis=0))
             sequences = sequences if self.has_sequence else torch.empty(0)
 
         target = torch.zeros(1)

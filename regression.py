@@ -4,8 +4,9 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, random_split
 
-from dataloader import seq_collate, preprocess, exam_loader
+from dataloader import seq_collate, preprocess
 from utilities import *
+from model import LPSolver
 
 import os
 import pathlib
@@ -114,39 +115,13 @@ def fit_regression_models(data, label, save_dir, logfile=None, sequence=False, e
     param_dir = os.path.join(save_dir, f"best_params_{param_name}.pkl")
     joblib.dump(voting_regressor, param_dir)
 
+    return voting_regressor
 
-if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '-d', '--debug',
-        help='Print debug traces.',
-        action='store_true',
-    )
-    args = parser.parse_args()
-
-    # Working directory setup
-    loader_root = "./loader.yml"
-    loader_config = yaml.load(open(loader_root, 'r'), Loader=yaml.SafeLoader)
-    save_dir = os.path.join('./saved_params/regression', str_current_time())
-
-    # Debug argument setup
-    if args.debug:
-        save_dir = os.path.join('./saved_params/regression', 'debug')
-
-    # logging setup
-    os.makedirs(save_dir, exist_ok=True)
-    logfile = os.path.join(save_dir, 'train_log.txt')
-    if os.path.exists(logfile):
-        os.remove(logfile)
-
-    # Feature setup
-    train_root_path = "./datasets/trainSet.csv"
+def train_loader(dataset, loader_config):
     norm_dict = loader_config['norm_factor_dict']
     remove_feats = loader_config['remove_features']
     last_prod = 'Last 6 mo. Avg. GAS (Mcf)'
-    first_prod = 'First 6 mo. Avg. GAS (Mcf)'
-    dataset = pd.read_csv(train_root_path)
 
     # Preprocess data
     dataset = dataset.drop(remove_feats, axis=1)
@@ -175,17 +150,117 @@ if __name__ == '__main__':
     feature_dataset = dataset[dataset[last_prod].isna()]
     sequence_dataset = dataset.dropna(subset=[last_prod]).reset_index(drop=True)
 
-    gas = np.array(sequence_dataset[[f'GAS_MONTH_{j}' for j in range(1, 31)]])
-    cnd = np.array(sequence_dataset[[f'CND_MONTH_{j}' for j in range(1, 31)]])
-    hrs = np.array(sequence_dataset[[f'HRS_MONTH_{j}' for j in range(1, 31)]])
+    return feature_dataset, sequence_dataset
 
-    log('Fitting sequence data', logfile)
-    data = gas
-    label = np.array(sequence_dataset[last_prod])
-    fit_regression_models(data, label, save_dir, logfile=logfile, sequence=True, exp=False)
+
+def exam_loader(train_data, exam_data, loader_config):
+    norm_dict = loader_config['norm_factor_dict']
+    remove_feats = loader_config['remove_features']
+    first_prod = 'GAS_MONTH_1'
+
+    if remove_feats is not None:
+        train_data = train_data.drop(remove_feats, axis=1)
+        exam_data = exam_data.drop(remove_feats, axis=1)
+
+    train_index = train_data.index
+    dataset = pd.concat([train_data, exam_data]).reset_index(drop=True)
+
+    # types of features
+    string_feats = dataset.select_dtypes(include='object').columns.tolist()
+    value_feats = dataset.select_dtypes(include=np.number).columns.tolist()
+    value_feats = [f for f in value_feats if ('MONTH' not in f and 'mo.' not in f)]
+
+    # maps the direction to an angle
+    direction = 'Bot-Hole direction (N/S)/(E/W)'
+    dataset[direction] = np.arctan(dataset[direction])
+
+    # imputes missing data and one-hot encodes if necessary
+    if value_feats:
+        num_imputer = SimpleImputer(strategy='mean')
+        dataset[value_feats] = num_imputer.fit_transform(dataset[value_feats])
+    if string_feats:
+        cat_imputer = SimpleImputer(strategy='most_frequent')
+        dataset[string_feats] = cat_imputer.fit_transform(dataset[string_feats])
+        dataset = pd.get_dummies(dataset, columns=string_feats)
+
+    # normalize data
+    for feats in norm_dict:
+        dataset[feats] /= float(norm_dict[feats])
+
+    # remove train dataset back again
+    dataset = dataset.drop(train_index).reset_index(drop=True)
+
+    # remove decision related features
+    decision_feats = [col for col in dataset.columns if '$' in col]
+    dataset = dataset.drop(decision_feats, axis=1)
+
+    # split into data w/ or w/o sequence data
+    feature_dataset = dataset[dataset[first_prod].isna()]
+    sequence_dataset = dataset.dropna(subset=[first_prod]).reset_index(drop=True)
+
+    return feature_dataset, sequence_dataset
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-d', '--debug',
+        help='Print debug traces.',
+        action='store_true',
+    )
+    args = parser.parse_args()
+
+    # Working directory setup
+    loader_root = "./loader.yml"
+    loader_config = yaml.load(open(loader_root, 'r'), Loader=yaml.SafeLoader)
+    save_dir = os.path.join('./saved_params/regression', str_current_time())
+
+    # Debug argument setup
+    if args.debug:
+        save_dir = os.path.join('./saved_params/regression', 'debug')
+
+    # logging setup
+    os.makedirs(save_dir, exist_ok=True)
+    logfile = os.path.join(save_dir, 'train_log.txt')
+    if os.path.exists(logfile):
+        os.remove(logfile)
+
+    # Feature setup
+    train_root_path = "./datasets/trainSet.csv"
+    test_root_path = "./datasets/examSet.csv"
+    last_prod = 'Last 6 mo. Avg. GAS (Mcf)'
+    first_prod = 'First 6 mo. Avg. GAS (Mcf)'
+    dataset = pd.read_csv(train_root_path)
+
+    feature_dataset, sequence_dataset = train_loader(dataset, loader_config)
+    gas = np.array(sequence_dataset[[f'GAS_MONTH_{j}' for j in range(1, 31)]])
 
     log('Fitting static feature data', logfile)
     total_features = [f for f in feature_dataset if ('MONTH' not in f and 'mo.' not in f)]
     data = np.array(feature_dataset[total_features])
     label = np.array(feature_dataset[first_prod])
-    fit_regression_models(data, label, save_dir, logfile=logfile, sequence=False, exp=False)
+    model_feat = fit_regression_models(data, label, save_dir, logfile=logfile, sequence=False, exp=False)
+
+    log('Fitting sequence data', logfile)
+    data = gas
+    label = np.array(sequence_dataset[last_prod])
+    model_seq = fit_regression_models(data, label, save_dir, logfile=logfile, sequence=True, exp=False)
+
+    # Make predictions with the exam data
+    exam_data = pd.read_csv(test_root_path)
+    train_data = pd.read_csv(train_root_path)
+
+    feature_dataset, sequence_dataset = exam_loader(train_data, exam_data, loader_config)
+    gas = np.array(sequence_dataset[[f'GAS_MONTH_{j}' for j in range(1, 31)]])
+    sequence_predictions = model_seq.predict(gas)
+
+    total_features = [f for f in feature_dataset if ('MONTH' not in f and 'mo.' not in f)]
+    data = np.array(feature_dataset[total_features])
+    feature_predictions = model_feat.predict(data)
+
+    predictions = np.concatenate([feature_predictions, sequence_predictions])
+    submission_file = os.path.join(save_dir, 'submission.csv')
+    solver = LPSolver(predictions, exam_data)
+    solver.export(submission_file)
+    log(f'Submission file successfully exported to {submission_file}', logfile)

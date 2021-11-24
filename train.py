@@ -161,11 +161,11 @@ if __name__ == '__main__':
     batch_size = 16
     ratio = 0.3
     lr = 1e-3
-    patience = 20
+    patience = 50
 
     # Use augment option for more data, and pad option for LSTM models
     augment = False
-    pad = False
+    pad = True
 
     # Working directory setup
     loader_root = "./loader.yml"
@@ -214,7 +214,7 @@ if __name__ == '__main__':
     log(f"Configuration Information: \n{loader_config}", logfile, verbose=False)
 
     # Import and train model for feature data
-    model_feature = FeatureMLP().to(device)
+    model_feature = LSTMPredictor().to(device)
     log(f"Training {model_feature.__class__.__name__} for feature data", logfile)
     optimizer = torch.optim.Adam(model_feature.parameters(), lr=lr)
     scheduler = Scheduler(patience=patience, max_epoch=max_epoch)
@@ -222,7 +222,7 @@ if __name__ == '__main__':
           save_dir, logfile=logfile, ratio=ratio, device=device)
 
     # Import and train model for sequence data
-    model_sequence = SequenceMLP().to(device)
+    model_sequence = LSTMPredictor().to(device)
     log(f"Training {model_sequence.__class__.__name__} for sequence data", logfile)
     optimizer = torch.optim.Adam(model_sequence.parameters(), lr=lr)
     scheduler = Scheduler(patience=patience, max_epoch=max_epoch)
@@ -230,8 +230,12 @@ if __name__ == '__main__':
           save_dir, logfile=logfile, ratio=ratio, device=device)
 
     # Make predictions with the exam data
+    log("Making Predictions...")
     test_file = pd.read_csv(test_root_path)
     feature_test, sequence_test = exam_loader(train_file, test_file, norm_dict, removes, pad=pad)
+    log(f"Data loading completed. "
+        f"{len(feature_test)} total feature exam data and "
+        f"{len(sequence_test)} exam sequence data.", logfile)
 
     # Passing data to torch.utils.data.DataLoader, use seq_collate for LSTM models
     fn_ft = seq_collate if model_feature.__class__.__name__ == 'LSTMPredictor' else None

@@ -144,7 +144,7 @@ def exam_loader(train_data, exam_data, norm_dict, remove_feats=None, pad=True):
         exam_data = exam_data.drop(remove_feats, axis=1)
 
     train_index = train_data.index
-    dataset = pd.concat([exam_data, train_data]).reset_index(drop=True)
+    dataset = pd.concat([train_data, exam_data]).reset_index(drop=True)
 
     # types of features
     string_feats = dataset.select_dtypes(include='object').columns.tolist()
@@ -176,7 +176,7 @@ def exam_loader(train_data, exam_data, norm_dict, remove_feats=None, pad=True):
     dataset = dataset.drop(decision_feats, axis=1)
 
     # split into data w/ or w/o sequence data
-    target_name = 'Last 6 mo. Avg. GAS (Mcf)'
+    target_name = 'GAS_MONTH_1'
     feature_dataset = dataset[dataset[target_name].isna()]
     sequence_dataset = dataset.dropna(subset=[target_name]).reset_index(drop=True)
 

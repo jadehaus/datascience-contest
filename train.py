@@ -53,8 +53,7 @@ def process(model, data_loader, optimizer=None, device='cpu'):
     return total_loss / n_data
 
 
-def train(model, optimizer, scheduler, dataset, save_dir,
-          logfile=None, ratio=0.2, device='cpu'):
+def train(model, optimizer, scheduler, dataset, logfile=None, device='cpu'):
     """
     Trains the model given optimizera and scheduler.
     Returns the final parameter of the trained model.
@@ -68,18 +67,15 @@ def train(model, optimizer, scheduler, dataset, save_dir,
         A scheduler for training process.
     dataset: torch.utils.data.Dataset
         Pre-loaded dataset of training samples.
-    save_dir: str
-        Directory for saving model parameters.
     logfile: str (optional)
         Logfile directory for saving the logs.
-    ratio: float in [0, 1]
-        ratio for train and valid dataset split.
     device: torch.device
     Returns
     -------
     model.state_dict(): dict
     """
     # Printing model info and configure param file
+    global save_dir, batch_size, ratio
     log(f"Model info: \n{model}", logfile, verbose=False)
     param_name = 'sequence' if dataset.has_sequence else 'feature'
     param_dir = pathlib.Path(os.path.join(save_dir, f"best_params_{param_name}.pkl"))
@@ -116,18 +112,20 @@ def train(model, optimizer, scheduler, dataset, save_dir,
     return model.state_dict()
 
 
-def evaluate(model, dataset):
+def evaluate(model, dataset, device='cpu'):
     """
     Evaluates the model and make predictions with data in test_loader.
     Parameters
     ----------
     model: torch.nn.Module
     dataset: torch.utils.data.Dataset
+    device: torch.device
     Returns
     -------
     predictions: list
     """
     # Passing data to torch.utils.data.DataLoader, use seq_collate for LSTM models
+    global batch_size, ratio
     fn = seq_collate if model.__class__.__name__ == 'LSTMPredictor' else None
     test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=fn)
 
@@ -164,7 +162,7 @@ if __name__ == '__main__':
     max_epoch = 500
     batch_size = 16
     ratio = 0.3
-    lr = 1e-3
+    lr = 5e-4
     patience = 50
 
     # Working directory setup
@@ -222,15 +220,13 @@ if __name__ == '__main__':
     log(f"Training {model_feature.__class__.__name__} for feature data", logfile)
     optimizer = torch.optim.Adam(model_feature.parameters(), lr=lr)
     scheduler = Scheduler(patience=patience, max_epoch=max_epoch)
-    train(model_feature, optimizer, scheduler, feature_dataset,
-          save_dir, logfile=logfile, ratio=ratio, device=device)
+    train(model_feature, optimizer, scheduler, feature_dataset, logfile=logfile, device=device)
 
     # Import and train model for sequence data
     log(f"Training {model_sequence.__class__.__name__} for sequence data", logfile)
-    optimizer = torch.optim.Adam(model_sequence.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model_sequence.parameters(), lr=lr, weight_decay=5e-4)
     scheduler = Scheduler(patience=patience, max_epoch=max_epoch)
-    train(model_sequence, optimizer, scheduler, sequence_dataset,
-          save_dir, logfile=logfile, ratio=ratio, device=device)
+    train(model_sequence, optimizer, scheduler, sequence_dataset, logfile=logfile, device=device)
 
     # Make predictions with the exam data
     log("Making Predictions...")

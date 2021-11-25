@@ -72,11 +72,11 @@ class FeatureMLP(nn.Module):
         super().__init__()
         self.fc = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
-            # nn.BatchNorm1d(emb_size),
+            nn.BatchNorm1d(emb_size),
             nn.ReLU(),
-            # nn.Linear(emb_size, emb_size),
-            # nn.BatchNorm1d(emb_size),
-            # nn.ReLU(),
+            nn.Linear(emb_size, emb_size),
+            nn.BatchNorm1d(emb_size),
+            nn.ReLU(),
             nn.Linear(emb_size, 1)
         )
 

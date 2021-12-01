@@ -25,8 +25,9 @@ class LSTMPredictor(nn.Module):
     n_layers: int
         number of recurrent layers
     """
-    def __init__(self, feature_dim=22, sequence_dim=4, hidden_dim=64, n_layers=2):
+    def __init__(self, feature_dim=22, sequence_dim=4, hidden_dim=64, n_layers=2, args=None):
         super().__init__()
+        self.args = args
         emb_size = feature_dim + hidden_dim
         self.make_sos = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
@@ -46,8 +47,8 @@ class LSTMPredictor(nn.Module):
         sequences, features = data
 
         # add noise to feature
-        features_noise = torch.randn_like(features) * features * 0.01
-        features = features + features_noise
+        features_noise = torch.randn_like(features) * features
+        features = features + features_noise * float(self.args.noise)
 
         sos = self.make_sos(features).unsqueeze(1)  # [b 1 f]
         _, hidden = self.gru(sos)
@@ -72,8 +73,9 @@ class FeatureMLP(nn.Module):
             number of recurrent layers
         """
 
-    def __init__(self, feature_dim=22, emb_size=64):
+    def __init__(self, feature_dim=22, emb_size=64, args=None):
         super().__init__()
+        self.args = args
         self.fc = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
             nn.BatchNorm1d(emb_size),
@@ -89,8 +91,8 @@ class FeatureMLP(nn.Module):
         sequences, features = data
 
         # add noise to feature
-        features_noise = torch.randn_like(features) * features * 0.01
-        features = features + features_noise
+        features_noise = torch.randn_like(features) * features
+        features = features + features_noise * float(self.args.noise)
 
         data = torch.cat((features, sequences), dim=1)
 
@@ -112,7 +114,7 @@ class SequenceMLP(nn.Module):
             number of recurrent layers
         """
 
-    def __init__(self, feature_dim=22, emb_size=128):
+    def __init__(self, feature_dim=22, emb_size=128, args=None):
         super().__init__()
         sequence_dim = 90
         feature_dim += sequence_dim

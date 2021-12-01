@@ -156,6 +156,11 @@ if __name__ == '__main__':
         type=int,
         default=0,
     )
+    parser.add_argument(
+        '-n', '--noise',
+        help='Add noise to the data input randomly',
+        default=0,
+    )
     args = parser.parse_args()
 
     # Hyperparameters
@@ -213,8 +218,8 @@ if __name__ == '__main__':
 
     # Define models
     feature_dim = len(feature_dataset.features)
-    model_feature = LSTMPredictor(feature_dim=feature_dim).to(device)
-    model_sequence = LSTMPredictor(feature_dim=feature_dim).to(device)
+    model_feature = LSTMPredictor(feature_dim=feature_dim, args=args).to(device)
+    model_sequence = LSTMPredictor(feature_dim=feature_dim, args=args).to(device)
 
     # Import and train model for feature data
     log(f"Training {model_feature.__class__.__name__} for feature data", logfile)

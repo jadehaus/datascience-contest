@@ -154,12 +154,12 @@ if __name__ == '__main__':
         '-g', '--gpu',
         help='CUDA GPU id (-1 for CPU).',
         type=int,
-        default=-1,
+        default=0,
     )
     args = parser.parse_args()
 
     # Hyperparameters
-    max_epoch = 500
+    max_epoch = 400
     batch_size = 16
     ratio = 0.3
     lr = 5e-4
@@ -205,7 +205,7 @@ if __name__ == '__main__':
 
     log(f"Initiating data augmentation...", logfile)
     train_file = pd.read_csv(train_root_path)
-    feature_dataset, sequence_dataset = preprocess(train_file, norm_dict, removes)
+    feature_dataset, sequence_dataset = preprocess(train_file, norm_dict, removes, augment=False)
     log(f"Data loading completed. "
         f"{len(feature_dataset)} total feature data and "
         f"{len(sequence_dataset)} sequence data.", logfile)
@@ -236,6 +236,8 @@ if __name__ == '__main__':
         f"{len(feature_test)} total feature exam data and "
         f"{len(sequence_test)} exam sequence data.", logfile)
 
+    model_feature = model_feature.cpu()
+    model_sequence = model_sequence.cpu()
     feature_predictions = evaluate(model_feature, feature_test)
     sequence_predictions = evaluate(model_sequence, sequence_test)
 

@@ -30,20 +30,24 @@ class LSTMPredictor(nn.Module):
         emb_size = feature_dim + hidden_dim
         self.make_sos = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(emb_size, sequence_dim)
         )
         self.gru = nn.GRU(input_size=sequence_dim, hidden_size=hidden_dim,
                           num_layers=n_layers, batch_first=True)
         self.fc = nn.Sequential(
             nn.Linear(emb_size, emb_size),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(emb_size, 1)
         )
 
     def forward(self, data):
 
         sequences, features = data
+
+        # add noise to feature
+        features_noise = torch.randn_like(features) * features * 0.01
+        features = features + features_noise
 
         sos = self.make_sos(features).unsqueeze(1)  # [b 1 f]
         _, hidden = self.gru(sos)
@@ -73,16 +77,21 @@ class FeatureMLP(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
             nn.BatchNorm1d(emb_size),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(emb_size, emb_size),
             nn.BatchNorm1d(emb_size),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(emb_size, 1)
         )
 
     def forward(self, data):
 
         sequences, features = data
+
+        # add noise to feature
+        features_noise = torch.randn_like(features) * features * 0.01
+        features = features + features_noise
+
         data = torch.cat((features, sequences), dim=1)
 
         output = self.fc(data.float())

@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
 from sklearn.impute import SimpleImputer
+import argument as argument
 
 
 def seq_tensor(gas, cnd, hrs, n=(1e5, 1e4, 1e3)):
@@ -51,6 +52,7 @@ def seq_collate(batch):
     """
     features = [sample['features'] for sample in batch]
     sequences = [sample['sequences'] for sample in batch]
+
     targets = [sample['target'] for sample in batch]
 
     lengths = [len(s) for s in sequences]

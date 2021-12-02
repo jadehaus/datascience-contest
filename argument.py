@@ -17,3 +17,6 @@ def get_argument_train():
         default=0)
     args = parser.parse_args()
     return args
+
+
+args = get_argument_train()

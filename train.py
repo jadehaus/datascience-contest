@@ -12,6 +12,7 @@ import yaml
 from dataloader import seq_collate, preprocess, exam_loader
 from model import LSTMPredictor, FeatureMLP, SequenceMLP, LPSolver
 from utilities import *
+import argument
 
 
 def process(model, data_loader, optimizer=None, device='cpu'):
@@ -143,25 +144,7 @@ def evaluate(model, dataset, device='cpu'):
 
 
 if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '-d', '--debug',
-        help='Print debug traces.',
-        action='store_true',
-    )
-    parser.add_argument(
-        '-g', '--gpu',
-        help='CUDA GPU id (-1 for CPU).',
-        type=int,
-        default=0,
-    )
-    parser.add_argument(
-        '-n', '--noise',
-        help='Add noise to the data input randomly',
-        default=0,
-    )
-    args = parser.parse_args()
+    args = argument.get_argument_train()
 
     # Hyperparameters
     max_epoch = 400

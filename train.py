@@ -144,13 +144,13 @@ def evaluate(model, dataset, device='cpu'):
 
 
 if __name__ == '__main__':
-    args = argument.get_argument_train()
+    args = argument.args
 
     # Hyperparameters
     max_epoch = 400
-    batch_size = 16
-    ratio = 0.3
-    lr = 5e-4
+    batch_size = 4
+    ratio = 0.4
+    lr = 1e-4
     patience = 50
 
     # Working directory setup
@@ -203,6 +203,7 @@ if __name__ == '__main__':
     feature_dim = len(feature_dataset.features)
     model_feature = LSTMPredictor(feature_dim=feature_dim, args=args).to(device)
     model_sequence = LSTMPredictor(feature_dim=feature_dim, args=args).to(device)
+
 
     # Import and train model for feature data
     log(f"Training {model_feature.__class__.__name__} for feature data", logfile)

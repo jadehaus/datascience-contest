@@ -26,14 +26,14 @@ class LSTMPredictor(nn.Module):
     n_layers: int
         number of recurrent layers
     """
-    def __init__(self, feature_dim=22, sequence_dim=4, hidden_dim=64, n_layers=2, args=None):
+    def __init__(self, feature_dim=22, sequence_dim=4, hidden_dim=64, n_layers=3, args=None):
         super().__init__()
         self.args = args
         emb_size = feature_dim + hidden_dim
         self.make_sos = nn.Sequential(
-            nn.Linear(feature_dim, emb_size),
+            nn.Linear(feature_dim, feature_dim),
             nn.SiLU(),
-            nn.Linear(emb_size, sequence_dim)
+            nn.Linear(feature_dim, sequence_dim)
         )
         self.gru = nn.GRU(input_size=sequence_dim, hidden_size=hidden_dim,
                           num_layers=n_layers, batch_first=True)

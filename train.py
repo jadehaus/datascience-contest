@@ -35,7 +35,7 @@ def process(model, data_loader, optimizer=None, device='cpu'):
     total_loss = 0
     n_data = len(data_loader.dataset)
 
-    if optimizer == None:
+    if optimizer is None:
         model.eval()
     else:
         model.train()

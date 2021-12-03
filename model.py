@@ -96,14 +96,13 @@ class FeatureMLP(nn.Module):
 
     def forward(self, data):
 
-        sequences, features = data
+        _, features = data
 
         # add noise to feature
         features_noise = torch.randn_like(features) * features
         features = features + features_noise * float(self.args.noise)
 
-        data = torch.cat((features, sequences), dim=1)
-
+        data = features
         output = self.fc(data.float())
         return output
 

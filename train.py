@@ -35,6 +35,11 @@ def process(model, data_loader, optimizer=None, device='cpu'):
     total_loss = 0
     n_data = len(data_loader.dataset)
 
+    if optimizer == None:
+        model.eval()
+    else:
+        model.train()
+
     with torch.set_grad_enabled(optimizer is not None):
         for _, samples in enumerate(data_loader):
             sequences = samples['sequences'].to(device)

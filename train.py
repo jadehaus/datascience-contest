@@ -155,7 +155,7 @@ if __name__ == '__main__':
     max_epoch = 400
     batch_size = 16
     ratio = 0.3
-    lr = 3e-4
+    lr = 1e-4
     patience = 50
 
     # Working directory setup
@@ -232,7 +232,7 @@ if __name__ == '__main__':
 
     model_feature = model_feature.cpu()
     model_sequence = model_sequence.cpu()
-    # feature_predictions = evaluate(model_feature, feature_test)
+    feature_predictions = evaluate(model_feature, feature_test)
     sequence_predictions = evaluate(model_sequence, sequence_test)
 
     predictions = feature_predictions + sequence_predictions

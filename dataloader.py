@@ -110,7 +110,7 @@ def preprocess(dataset, normalize_dict, remove_feats=None, augment=False, pad=Tr
 
     # split into data w/ or w/o sequence data
     target_name = 'Last 6 mo. Avg. GAS (Mcf)'
-    feature_dataset = dataset
+    feature_dataset = dataset[dataset[target_name].isna()]
     sequence_dataset = dataset.dropna(subset=[target_name]).reset_index(drop=True)
 
     # data augmentation / inplace addition of data

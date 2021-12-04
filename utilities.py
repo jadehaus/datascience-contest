@@ -82,3 +82,17 @@ class Scheduler:
             self.num_bad_epoch = 0
         else:
             self.num_bad_epoch += 1
+
+
+def enable_dropout(model):
+    """
+    Enables dropout of the given model.
+    Used to produce predictive distribution of the model
+    and obtain model uncertanties.
+    Parameters
+    ----------
+    model: nn.Module
+    """
+    for module in model.modules():
+        if module.__class__.__name__.startswith('Dropout'):
+            module.train()

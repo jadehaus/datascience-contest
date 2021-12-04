@@ -10,9 +10,8 @@ import argparse
 import yaml
 
 from dataloader import seq_collate, preprocess, exam_loader
-from model import LSTMPredictor, FeatureMLP, SequenceMLP, LPSolver
+from model import LSTMPredictor, FeatureMLP, LPSolver
 from utilities import *
-import argument
 
 
 def process(model, data_loader, optimizer=None, device='cpu'):
@@ -148,17 +147,63 @@ def evaluate(model, dataset, device='cpu'):
     return predictions
 
 
+def generate_pred_dist(model, dataset, device='cpu', num_pass=500):
+    """
+    Generates a predictive distribution of the model. [Gal et al., 2016]
+    Parameters
+    ----------
+    model: torch.nn.Module
+    dataset: torch.utils.data.Dataset
+    device: torch.device
+    num_pass: int (optional)
+        number of stochastic forward passes through the network
+    Returns
+    -------
+    distribution: list
+    """
+    global batch_size, ratio
+    fn = seq_collate if model.__class__.__name__ == 'LSTMPredictor' else None
+    test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=fn)
+    enable_dropout(model)
+
+    distribution = []
+    with torch.set_grad_enabled(False):
+        for _ in range(num_pass):
+            predictions = []
+            for _, samples in enumerate(test_loader):
+                sequences = samples['sequences'].to(device)
+                features = samples['features'].float().to(device)
+                data = (sequences, features)
+
+                production = model(data).view(-1).cpu().detach().numpy()
+                predictions.extend(production * 1e5)
+
+            distribution.append(predictions)
+
+    return distribution
+
+
 if __name__ == '__main__':
 
-    # Import arguments
-    args = argument.args
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-d', '--debug',
+        help='Print debug traces.',
+        action='store_true')
+    parser.add_argument(
+        '-g', '--gpu',
+        help='CUDA GPU id (-1 for CPU).',
+        type=int,
+        default=-1)
+    args = parser.parse_args()
 
     # Hyperparameters
     max_epoch = 2000
     batch_size = 16
-    ratio = 0.3
+    ratio = 0.15
     lr = 5e-4
-    patience = 100
+    patience = 50
+    noise = 0.3
 
     # Working directory setup
     loader_root = "./loader.yml"
@@ -190,6 +235,7 @@ if __name__ == '__main__':
     log(f"Max epochs: {max_epoch}", logfile)
     log(f"Batch size: {batch_size}", logfile)
     log(f"Learning rate: {lr}", logfile)
+    log(f"Random noise: {noise}", logfile)
     log(f"Device: {device}")
 
     # Setup Training Data
@@ -208,8 +254,8 @@ if __name__ == '__main__':
 
     # Define models
     feature_dim = len(feature_dataset.features)
-    model_feature = FeatureMLP(feature_dim=feature_dim, args=args).to(device)
-    model_sequence = LSTMPredictor(feature_dim=feature_dim, args=args).to(device)
+    model_feature = FeatureMLP(feature_dim=feature_dim, noise=noise).to(device)
+    model_sequence = LSTMPredictor(feature_dim=feature_dim).to(device)
 
     # Import and train model for feature data
     log(f"Training {model_feature.__class__.__name__} for feature data", logfile)
@@ -222,8 +268,8 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model_sequence.parameters(), lr=lr, weight_decay=5e-4)
     scheduler = Scheduler(patience=patience, max_epoch=max_epoch)
     train(model_sequence, optimizer, scheduler, sequence_dataset, logfile=logfile, device=device)
+
     # Make predictions with the exam data
-    log("Making Predictions...")
     test_file = pd.read_csv(test_root_path)
     feature_test, sequence_test = exam_loader(train_file, test_file, norm_dict, removes)
     log(f"Data loading completed. "
@@ -232,11 +278,26 @@ if __name__ == '__main__':
 
     model_feature = model_feature.cpu()
     model_sequence = model_sequence.cpu()
+
+    # Generates predictive distribution, and export to csv
+    log("Making Predictions...")
     feature_predictions = evaluate(model_feature, feature_test)
     sequence_predictions = evaluate(model_sequence, sequence_test)
-
     predictions = feature_predictions + sequence_predictions
+
+    feature_distribution = generate_pred_dist(model_feature, feature_test)
+    sequence_distribution = generate_pred_dist(model_sequence, sequence_test)
+    feature_distribution = pd.DataFrame(feature_distribution)
+    sequence_distribution = pd.DataFrame(sequence_distribution)
+
+    distribution = pd.concat([feature_distribution, sequence_distribution], axis=1)
+    distribution.columns = range(distribution.shape[1])
+    distribution.loc[len(distribution)] = predictions
+
+    distribution_file = os.path.join(save_dir, 'distribution.csv')
+    distribution.to_csv(distribution_file)
+
     submission_file = os.path.join(save_dir, 'submission.csv')
-    solver = LPSolver(predictions, test_file)
+    solver = LPSolver(predictions, distribution, test_file)
     solver.export(submission_file)
     log(f'Submission file successfully exported to {submission_file}', logfile)

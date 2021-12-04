@@ -27,13 +27,14 @@ class LSTMPredictor(nn.Module):
     n_layers: int
         number of recurrent layers
     """
-    def __init__(self, feature_dim=22, sequence_dim=4, hidden_dim=64, n_layers=3, args=None):
+    def __init__(self, feature_dim=22, sequence_dim=4, hidden_dim=32, n_layers=2, noise=0):
         super().__init__()
-        self.args = args
-        emb_size = feature_dim + hidden_dim
-        self.make_sos = nn.Sequential(
+        emb_size = hidden_dim + sequence_dim
+        self.noise = noise
+        self.feature_embedding = nn.Sequential(
             nn.Linear(feature_dim, feature_dim),
             nn.ReLU(),
+            nn.Dropout(0.3),
             nn.Linear(feature_dim, sequence_dim)
         )
         self.gru = nn.GRU(input_size=sequence_dim, hidden_size=hidden_dim,
@@ -51,19 +52,20 @@ class LSTMPredictor(nn.Module):
         if self.training:
             # add noise to feature
             features_noise = torch.randn_like(features) * features
-            features = features + features_noise * float(self.args.noise)
+            features = features + features_noise * float(self.noise)
 
             # add noise to sequence
             sequences_unpacked, lens_unpacked = pad_packed_sequence(sequences, batch_first=True)
             sequences_unpacked_noise = torch.randn_like(sequences_unpacked) * sequences_unpacked
-            sequences_unpacked = sequences_unpacked + sequences_unpacked_noise * float(self.args.noise)
+            sequences_unpacked = sequences_unpacked + sequences_unpacked_noise * float(self.noise)
             sequences = pack_padded_sequence(sequences_unpacked, lens_unpacked, batch_first=True, enforce_sorted=False)
 
-        sos = self.make_sos(features).unsqueeze(1)  # [b 1 f]
+        sos = self.feature_embedding(features).unsqueeze(1)  # [b 1 f]
         _, hidden = self.gru(sos)
         _, hidden = self.gru(sequences.float(), hidden)
 
-        output = torch.cat([hidden[-1], features], dim=1)
+        emb_feat = self.feature_embedding(features)
+        output = torch.cat([hidden[-1], emb_feat], dim=1)
         output = self.fc(output.float())
         return output
 
@@ -82,9 +84,9 @@ class FeatureMLP(nn.Module):
             number of recurrent layers
         """
 
-    def __init__(self, feature_dim=22, emb_size=16, args=None):
+    def __init__(self, feature_dim=22, emb_size=64, noise=0):
         super().__init__()
-        self.args = args
+        self.noise = noise
         self.fc = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
             nn.ReLU(),
@@ -101,46 +103,9 @@ class FeatureMLP(nn.Module):
 
         # add noise to feature
         features_noise = torch.randn_like(features) * features
-        features = features + features_noise * float(self.args.noise)
+        features = features + features_noise * float(self.noise)
 
         data = features
-        output = self.fc(data.float())
-        return output
-
-
-class SequenceMLP(nn.Module):
-    """
-        2-layer MLP predictor for the last 6 month averaged gas production.
-        Takes both the static features and seqeunces to estimate the gas production.
-        Parameters
-        ----------
-        feature_dim: int
-            number of static features used to predict the gas production.
-        emb_size: int
-            number of features in the hidden layer
-        n_layers: int
-            number of recurrent layers
-        """
-
-    def __init__(self, feature_dim=22, emb_size=64, args=None):
-        super().__init__()
-        sequence_dim = 90
-        feature_dim += sequence_dim
-        self.fc = nn.Sequential(
-            nn.Linear(feature_dim, emb_size),
-            nn.BatchNorm1d(emb_size),
-            nn.ReLU(),
-            nn.Linear(emb_size, emb_size),
-            nn.BatchNorm1d(emb_size),
-            nn.ReLU(),
-            nn.Linear(emb_size, 1)
-        )
-
-    def forward(self, data):
-
-        sequences, features = data
-        data = torch.cat((features, sequences), dim=1)
-
         output = self.fc(data.float())
         return output
 
@@ -151,23 +116,34 @@ class LPSolver:
     Parameters
     ----------
     predictions: list
-        list of predicted values of gas prod. for each well
+        list of expected predicted values of gas prod. for each well
+    distribution: pandas.DataFrame
+        predictive distribution of the predictions.
+        used as the measure of uncertainty of the model.
     dataset: pandas.DataFrame
         test_dataset from the exam dataset csv file
+    model: str
+        specifies the model formulation of the problem.
     """
-    def __init__(self, predictions, dataset):
+    def __init__(self, predictions, distribution, dataset, model='Expected Value'):
         self.predictions = np.array(predictions)
+        self.distribution = distribution
         self.dataset = dataset
+        self.model = model
 
-    def solver(self, s=5, b=1.5e7):
+    def solver(self, s=7, b=1.5e7, alpha=0.95):
         """
-        An LP solver for the given problem.
+        An IP solver of a expectation-maximization knapsack problem
+        with uncertainties for the given problem.
+        Model is based on the work of [Peng & Zhang, 2012].
         Parameters
         ----------
         s: float
             shale gas price per 1mcf
         b: float
             total budget available in dollars
+        alpha: float in [0,1]
+            confidence level
         Returns
         -------
         x: numpy.array of 0 or 1
@@ -178,18 +154,43 @@ class LPSolver:
         n = self.dataset.shape[0]
         c = self.dataset['Per Month Operation Cost ($)'].to_numpy()
         p = self.dataset['PRICE ($)'].to_numpy()
-        a = self.predictions
 
         m = gp.Model()
         m.setParam('OutputFlag', 0)
         m.update()
 
         x = m.addMVar(shape=n, vtype=GRB.BINARY, name="x")
-        m.setObjective((6*s*a - c - p) @ x, gp.GRB.MAXIMIZE)
         m.addConstr(p @ x <= b)
-        m.optimize()
 
-        return np.array(x.X).astype(int), m.objVal
+        if self.model == 'Expected Value':
+            pred = np.array(self.distribution.sum() / len(self.distribution))
+            m.setObjective((6 * s * pred - c - p) @ x, gp.GRB.MAXIMIZE)
+            m.optimize()
+
+            solution = np.array(x.X).astype(int)
+            objective = m.objVal
+
+        elif self.model == 'Chance-Constrained':
+            dist = self.distribution
+            cdf = np.cumsum(dist) / np.sum(dist)
+            idx = [np.argmin(np.abs(cdf[j]-(1-alpha))) for j in range(cdf.shape[1])]
+            pred = np.array([dist[j].iloc[idx[j]] for j in range(cdf.shape[1])])
+
+            m.setObjective((6 * s * pred - c - p) @ x, gp.GRB.MAXIMIZE)
+            m.optimize()
+
+            solution = np.array(x.X).astype(int)
+            objective = m.objVal
+
+        else:
+            pred = self.predictions
+            m.setObjective((6 * s * pred - c - p) @ x, gp.GRB.MAXIMIZE)
+            m.optimize()
+
+            solution = np.array(x.X).astype(int)
+            objective = m.objVal
+
+        return pred, solution, objective
 
     def export(self, file_path):
         """
@@ -200,9 +201,8 @@ class LPSolver:
             directory for the csv file.
         """
         titles = ['Prediction', 'Purchase']
-        prediction = self.predictions
-        x, _ = self.solver()
-        rows = np.array([prediction, x]).T
+        pred, x, _ = self.solver()
+        rows = np.array([pred, x]).T
 
         with open(file_path, 'w') as f:
             write = csv.writer(f)

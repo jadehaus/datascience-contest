@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from dataloader import exam_loader
 import argument
 
+
 class LSTMPredictor(nn.Module):
     """
     LSTM based predictor for the next 6 month averaged gas production.
@@ -32,14 +33,14 @@ class LSTMPredictor(nn.Module):
         emb_size = feature_dim + hidden_dim
         self.make_sos = nn.Sequential(
             nn.Linear(feature_dim, feature_dim),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Linear(feature_dim, sequence_dim)
         )
         self.gru = nn.GRU(input_size=sequence_dim, hidden_size=hidden_dim,
                           num_layers=n_layers, batch_first=True)
         self.fc = nn.Sequential(
             nn.Linear(emb_size, emb_size),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Linear(emb_size, 1)
         )
 
@@ -81,16 +82,16 @@ class FeatureMLP(nn.Module):
             number of recurrent layers
         """
 
-    def __init__(self, feature_dim=22, emb_size=64, args=None):
+    def __init__(self, feature_dim=22, emb_size=16, args=None):
         super().__init__()
         self.args = args
         self.fc = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
-            nn.BatchNorm1d(emb_size),
-            nn.SiLU(),
+            nn.ReLU(),
+            nn.Dropout(0.3),
             nn.Linear(emb_size, emb_size),
-            nn.BatchNorm1d(emb_size),
-            nn.SiLU(),
+            nn.ReLU(),
+            nn.Dropout(0.3),
             nn.Linear(emb_size, 1)
         )
 
@@ -121,7 +122,7 @@ class SequenceMLP(nn.Module):
             number of recurrent layers
         """
 
-    def __init__(self, feature_dim=22, emb_size=128, args=None):
+    def __init__(self, feature_dim=22, emb_size=64, args=None):
         super().__init__()
         sequence_dim = 90
         feature_dim += sequence_dim

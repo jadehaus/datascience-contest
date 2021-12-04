@@ -1,5 +1,6 @@
 import argparse
 
+
 def get_argument_train():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -10,7 +11,7 @@ def get_argument_train():
         '-g', '--gpu',
         help='CUDA GPU id (-1 for CPU).',
         type=int,
-        default=0)
+        default=-1)
     parser.add_argument(
         '-n', '--noise',
         help='Add noise to the data input randomly',

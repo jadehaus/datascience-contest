@@ -149,14 +149,16 @@ def evaluate(model, dataset, device='cpu'):
 
 
 if __name__ == '__main__':
+
+    # Import arguments
     args = argument.args
 
     # Hyperparameters
-    max_epoch = 400
+    max_epoch = 2000
     batch_size = 16
     ratio = 0.3
-    lr = 1e-4
-    patience = 50
+    lr = 5e-4
+    patience = 100
 
     # Working directory setup
     loader_root = "./loader.yml"
@@ -206,13 +208,12 @@ if __name__ == '__main__':
 
     # Define models
     feature_dim = len(feature_dataset.features)
-    model_feature = LSTMPredictor(feature_dim=feature_dim, args=args).to(device)
+    model_feature = FeatureMLP(feature_dim=feature_dim, args=args).to(device)
     model_sequence = LSTMPredictor(feature_dim=feature_dim, args=args).to(device)
-
 
     # Import and train model for feature data
     log(f"Training {model_feature.__class__.__name__} for feature data", logfile)
-    optimizer = torch.optim.Adam(model_feature.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model_feature.parameters(), lr=lr, weight_decay=5e-4)
     scheduler = Scheduler(patience=patience, max_epoch=max_epoch)
     train(model_feature, optimizer, scheduler, feature_dataset, logfile=logfile, device=device)
 
@@ -221,7 +222,6 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model_sequence.parameters(), lr=lr, weight_decay=5e-4)
     scheduler = Scheduler(patience=patience, max_epoch=max_epoch)
     train(model_sequence, optimizer, scheduler, sequence_dataset, logfile=logfile, device=device)
-
     # Make predictions with the exam data
     log("Making Predictions...")
     test_file = pd.read_csv(test_root_path)

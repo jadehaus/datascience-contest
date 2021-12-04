@@ -110,7 +110,7 @@ def preprocess(dataset, normalize_dict, remove_feats=None, augment=False, pad=Tr
 
     # split into data w/ or w/o sequence data
     target_name = 'Last 6 mo. Avg. GAS (Mcf)'
-    feature_dataset = dataset[dataset[target_name].isna()]
+    feature_dataset = dataset
     sequence_dataset = dataset.dropna(subset=[target_name]).reset_index(drop=True)
 
     # data augmentation / inplace addition of data
@@ -264,7 +264,7 @@ class WellDataset(Dataset):
 
         # For LSTM models use seq_tensor function to pack sequences
         if self.pad:
-            sequences = seq_tensor(gas, cnd, hrs)
+            sequences = seq_tensor(gas, cnd, hrs) if self.has_sequence else torch.zeros(1, 4)
         # Otherwise use below codes for simple MLP models
         else:
             sequences = torch.tensor(np.concatenate([gas/1e5, cnd/1e4, hrs/1e3], axis=0))

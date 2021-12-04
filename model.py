@@ -26,20 +26,20 @@ class LSTMPredictor(nn.Module):
     n_layers: int
         number of recurrent layers
     """
-    def __init__(self, feature_dim=22, sequence_dim=4, hidden_dim=64, n_layers=3, args=None):
+    def __init__(self, feature_dim=22, sequence_dim=4, hidden_dim=32, n_layers=3, args=None):
         super().__init__()
         self.args = args
         emb_size = feature_dim + hidden_dim
         self.make_sos = nn.Sequential(
             nn.Linear(feature_dim, feature_dim),
-            nn.SiLU(),
+            # nn.ReLU(),
             nn.Linear(feature_dim, sequence_dim)
         )
         self.gru = nn.GRU(input_size=sequence_dim, hidden_size=hidden_dim,
-                          num_layers=n_layers, batch_first=True)
+                          num_layers=n_layers, batch_first=True, dropout=0.2)
         self.fc = nn.Sequential(
             nn.Linear(emb_size, emb_size),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Linear(emb_size, 1)
         )
 
@@ -81,30 +81,32 @@ class FeatureMLP(nn.Module):
             number of recurrent layers
         """
 
-    def __init__(self, feature_dim=22, emb_size=64, args=None):
+    def __init__(self, feature_dim=22, emb_size=16, args=None):
         super().__init__()
         self.args = args
+
         self.fc = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
-            nn.BatchNorm1d(emb_size),
-            nn.SiLU(),
+            nn.ReLU(),
+            nn.Dropout(0.3),
             nn.Linear(emb_size, emb_size),
-            nn.BatchNorm1d(emb_size),
-            nn.SiLU(),
+            nn.Dropout(0.3),
+            nn.ReLU(),
             nn.Linear(emb_size, 1)
         )
+
 
     def forward(self, data):
 
         sequences, features = data
 
-        # add noise to feature
-        features_noise = torch.randn_like(features) * features
-        features = features + features_noise * float(self.args.noise)
+        if self.training:
+            # add noise to feature
+            features_noise = torch.randn_like(features) * features
+            features = features + features_noise * float(self.args.noise)
 
-        data = torch.cat((features, sequences), dim=1)
-
-        output = self.fc(data.float())
+        # data = torch.cat((features, sequences), dim=1)
+        output = self.fc(features)
         return output
 
 
@@ -128,10 +130,8 @@ class SequenceMLP(nn.Module):
         feature_dim += sequence_dim
         self.fc = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
-            nn.BatchNorm1d(emb_size),
             nn.ReLU(),
             nn.Linear(emb_size, emb_size),
-            nn.BatchNorm1d(emb_size),
             nn.ReLU(),
             nn.Linear(emb_size, 1)
         )

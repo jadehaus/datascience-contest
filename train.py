@@ -153,12 +153,12 @@ if __name__ == '__main__':
 
     # Hyperparameters
     max_epoch = 400
-    batch_size = 16
-    ratio = 0.3
+    batch_size = 4
+    ratio = 0.2
     lr = 1e-4
     patience = 50
 
-    # Working directory setup
+    # Working direfctory setup
     loader_root = "./loader.yml"
     loader_config = yaml.load(open(loader_root, 'r'), Loader=yaml.SafeLoader)
     save_dir = os.path.join('./saved_params', str_current_time())
@@ -206,15 +206,16 @@ if __name__ == '__main__':
 
     # Define models
     feature_dim = len(feature_dataset.features)
-    model_feature = LSTMPredictor(feature_dim=feature_dim, args=args).to(device)
+    model_feature = FeatureMLP(feature_dim=feature_dim, args=args).to(device)
     model_sequence = LSTMPredictor(feature_dim=feature_dim, args=args).to(device)
 
 
     # Import and train model for feature data
     log(f"Training {model_feature.__class__.__name__} for feature data", logfile)
-    optimizer = torch.optim.Adam(model_feature.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model_feature.parameters(), lr=lr, weight_decay=5e-4)
     scheduler = Scheduler(patience=patience, max_epoch=max_epoch)
     train(model_feature, optimizer, scheduler, feature_dataset, logfile=logfile, device=device)
+
 
     # Import and train model for sequence data
     log(f"Training {model_sequence.__class__.__name__} for sequence data", logfile)

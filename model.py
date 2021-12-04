@@ -10,7 +10,6 @@ import csv
 
 from torch.utils.data import DataLoader
 from dataloader import exam_loader
-import argument
 
 
 class LSTMPredictor(nn.Module):

@@ -255,7 +255,7 @@ if __name__ == '__main__':
     # Define models
     feature_dim = len(feature_dataset.features)
     model_feature = FeatureMLP(feature_dim=feature_dim, noise=noise).to(device)
-    model_sequence = LSTMPredictor(feature_dim=feature_dim).to(device)
+    model_sequence = LSTMPredictor(feature_dim=feature_dim, noise=noise).to(device)
 
     # Import and train model for feature data
     log(f"Training {model_feature.__class__.__name__} for feature data", logfile)

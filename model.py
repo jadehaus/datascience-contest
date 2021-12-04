@@ -49,15 +49,8 @@ class LSTMPredictor(nn.Module):
         sequences, features = data
 
         if self.training:
-            # add noise to feature
             features_noise = torch.randn_like(features) * features
             features = features + features_noise * float(self.noise)
-
-            # add noise to sequence
-            sequences_unpacked, lens_unpacked = pad_packed_sequence(sequences, batch_first=True)
-            sequences_unpacked_noise = torch.randn_like(sequences_unpacked) * sequences_unpacked
-            sequences_unpacked = sequences_unpacked + sequences_unpacked_noise * float(self.noise)
-            sequences = pack_padded_sequence(sequences_unpacked, lens_unpacked, batch_first=True, enforce_sorted=False)
 
         sos = self.feature_embedding(features).unsqueeze(1)  # [b 1 f]
         _, hidden = self.gru(sos)
@@ -100,9 +93,9 @@ class FeatureMLP(nn.Module):
 
         _, features = data
 
-        # add noise to feature
-        features_noise = torch.randn_like(features) * features
-        features = features + features_noise * float(self.noise)
+        if self.training:
+            features_noise = torch.randn_like(features) * features
+            features = features + features_noise * float(self.noise)
 
         data = features
         output = self.fc(data.float())

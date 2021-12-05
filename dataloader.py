@@ -4,7 +4,6 @@ import torch
 from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
 from sklearn.impute import SimpleImputer
-import argument as argument
 
 
 def seq_tensor(gas, cnd, hrs, n=(1e5, 1e4, 1e3)):

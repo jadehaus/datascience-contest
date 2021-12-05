@@ -117,6 +117,7 @@ class FeatureMLP(nn.Module):
         return output
 
 
+
 class LPSolver:
     """
     LP solver that solves for the optimal choice of purchase of wells.

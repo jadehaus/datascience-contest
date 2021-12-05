@@ -32,7 +32,7 @@ class LSTMPredictor(nn.Module):
         self.noise = noise
         self.feature_embedding = nn.Sequential(
             nn.Linear(feature_dim, feature_dim),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Dropout(0.3),
             nn.Linear(feature_dim, sequence_dim)
         )
@@ -40,10 +40,18 @@ class LSTMPredictor(nn.Module):
                           num_layers=n_layers, batch_first=True)
         self.fc = nn.Sequential(
             nn.Linear(emb_size, emb_size),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Dropout(0.3),
             nn.Linear(emb_size, 1)
         )
+
+        # initialize params
+        def weights_init(m):
+            if isinstance(m, nn.Linear):
+                torch.nn.init.xavier_uniform_(m.weight)
+                torch.nn.init.zeros_(m.bias)
+        self.apply(weights_init)
+
 
     def forward(self, data):
 
@@ -82,13 +90,19 @@ class FeatureMLP(nn.Module):
         self.noise = noise
         self.fc = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Dropout(0.3),
             nn.Linear(emb_size, emb_size),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Dropout(0.3),
             nn.Linear(emb_size, 1)
         )
+
+        def weights_init(m):
+            if isinstance(m, nn.Linear):
+                torch.nn.init.xavier_uniform_(m.weight)
+                torch.nn.init.zeros_(m.bias)
+        self.apply(weights_init)
 
     def forward(self, data):
 

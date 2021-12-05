@@ -203,7 +203,7 @@ if __name__ == '__main__':
     ratio = 0.2
     lr = 5e-4
     patience = 50
-    noise = 0.7
+    noise = 0.2
 
     # Working directory setup
     loader_root = "./loader.yml"

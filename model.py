@@ -36,11 +36,12 @@ class LSTMPredictor(nn.Module):
             nn.Dropout(0.3),
             nn.Linear(feature_dim, sequence_dim)
         )
-        self.gru = nn.GRU(input_size=sequence_dim, hidden_size=hidden_dim,
+        self.gru = nn.GRU(input_size=sequence_dim, hidden_size=hidden_dim, dropout=0.3,
                           num_layers=n_layers, batch_first=True)
         self.fc = nn.Sequential(
             nn.Linear(emb_size, emb_size),
             nn.ReLU(),
+            nn.Dropout(0.3),
             nn.Linear(emb_size, 1)
         )
 
@@ -168,7 +169,9 @@ class LPSolver:
             idx = [np.argmin(np.abs(cdf[j]-(1-alpha))) for j in range(cdf.shape[1])]
             pred = np.array([dist[j].iloc[idx[j]] for j in range(cdf.shape[1])])
 
-            m.setObjective((6 * s * pred - c - p) @ x, gp.GRB.MAXIMIZE)
+            v = m.addMVar(shape=1, name='v')
+            m.addConstr((6 * s * pred - c - p) @ x >= v)
+            m.setObjective(v, gp.GRB.MAXIMIZE)
             m.optimize()
 
             solution = np.array(x.X).astype(int)

@@ -198,12 +198,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Hyperparameters
-    max_epoch = 2000
+    max_epoch = 500
     batch_size = 16
-    ratio = 0.15
+    ratio = 0.2
     lr = 5e-4
     patience = 50
-    noise = 0.3
+    noise = 0.7
 
     # Working directory setup
     loader_root = "./loader.yml"
@@ -213,8 +213,8 @@ if __name__ == '__main__':
     # Debug argument setup
     if args.debug:
         save_dir = os.path.join('./saved_params', 'debug')
-        max_epoch = 5
-        patience = 1
+        max_epoch = 200
+        patience = 20
 
     # cuda setup
     if args.gpu == -1:
@@ -297,7 +297,8 @@ if __name__ == '__main__':
     distribution_file = os.path.join(save_dir, 'distribution.csv')
     distribution.to_csv(distribution_file)
 
-    submission_file = os.path.join(save_dir, 'submission.csv')
-    solver = LPSolver(predictions, distribution, test_file)
-    solver.export(submission_file)
-    log(f'Submission file successfully exported to {submission_file}', logfile)
+    # Solving Knapsack Problem
+    submission_file_expected = os.path.join(save_dir, 'submission_expected.csv')
+    solver_expected = LPSolver(predictions, distribution, test_file, model='Expected Value')
+    solver_expected.export(submission_file_expected)
+    log(f'Submission files successfully exported.', logfile)

@@ -10,6 +10,7 @@ import csv
 
 from torch.utils.data import DataLoader
 from dataloader import exam_loader
+import warnings
 
 
 class LSTMPredictor(nn.Module):
@@ -51,7 +52,6 @@ class LSTMPredictor(nn.Module):
                 torch.nn.init.xavier_uniform_(m.weight)
                 torch.nn.init.zeros_(m.bias)
         self.apply(weights_init)
-
 
     def forward(self, data):
 
@@ -115,7 +115,6 @@ class FeatureMLP(nn.Module):
         data = features
         output = self.fc(data.float())
         return output
-
 
 
 class LPSolver:
@@ -193,6 +192,7 @@ class LPSolver:
             objective = m.objVal
 
         else:
+            warnings.warn("Invalid model type. Processing simple predictions of optimization.", UserWarning)
             pred = self.predictions
             m.setObjective((6 * s * pred - c - p) @ x, gp.GRB.MAXIMIZE)
             m.optimize()

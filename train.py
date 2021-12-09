@@ -298,7 +298,7 @@ if __name__ == '__main__':
     distribution.to_csv(distribution_file)
 
     # Solving Knapsack Problem
-    submission_file_expected = os.path.join(save_dir, 'submission_expected.csv')
-    solver_expected = LPSolver(predictions, distribution, test_file, model='Expected Value')
-    solver_expected.export(submission_file_expected)
-    log(f'Submission files successfully exported.', logfile)
+    submission_file = os.path.join(save_dir, 'submission.csv')
+    knapsack_solver = LPSolver(predictions, distribution, test_file, model='Expected Value')
+    knapsack_solver.export(submission_file)
+    log(f'Submission files successfully exported to {submission_file}.', logfile)

@@ -33,7 +33,7 @@ class LSTMPredictor(nn.Module):
         self.noise = noise
         self.feature_embedding = nn.Sequential(
             nn.Linear(feature_dim, feature_dim),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(feature_dim, sequence_dim)
         )
@@ -41,7 +41,7 @@ class LSTMPredictor(nn.Module):
                           num_layers=n_layers, batch_first=True)
         self.fc = nn.Sequential(
             nn.Linear(emb_size, emb_size),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(emb_size, 1)
         )
@@ -90,10 +90,10 @@ class FeatureMLP(nn.Module):
         self.noise = noise
         self.fc = nn.Sequential(
             nn.Linear(feature_dim, emb_size),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(emb_size, emb_size),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(emb_size, 1)
         )
@@ -117,9 +117,9 @@ class FeatureMLP(nn.Module):
         return output
 
 
-class LPSolver:
+class KnapsackSolver:
     """
-    LP solver that solves for the optimal choice of purchase of wells.
+    Knapsack solver that solves for the optimal choice of purchase of wells.
     Parameters
     ----------
     predictions: list

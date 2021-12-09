@@ -10,7 +10,7 @@ import argparse
 import yaml
 
 from dataloader import seq_collate, preprocess, exam_loader
-from model import LSTMPredictor, FeatureMLP, LPSolver
+from model import LSTMPredictor, FeatureMLP, KnapsackSolver
 from utilities import *
 
 
@@ -299,6 +299,6 @@ if __name__ == '__main__':
 
     # Solving Knapsack Problem
     submission_file = os.path.join(save_dir, 'submission.csv')
-    knapsack_solver = LPSolver(predictions, distribution, test_file, model='Expected Value')
+    knapsack_solver = KnapsackSolver(predictions, distribution, test_file, model='Expected Value')
     knapsack_solver.export(submission_file)
     log(f'Submission files successfully exported to {submission_file}.', logfile)

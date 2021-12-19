@@ -91,14 +91,17 @@ def train(model, optimizer, scheduler, dataset, logfile=None, device='cpu'):
 
     # Passing data to torch.utils.data.DataLoader, use seq_collate for LSTM models
     fn = seq_collate if model.__class__.__name__ == 'LSTMPredictor' else None
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=fn)
-    valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True, collate_fn=fn)
+    bs_train = min(len(train_dataset), batch_size)
+    bs_valid = min(len(valid_dataset), batch_size)
+    train_loader = DataLoader(train_dataset, batch_size=bs_train, shuffle=True, collate_fn=fn)
+    valid_loader = DataLoader(valid_dataset, batch_size=bs_valid, shuffle=True, collate_fn=fn)
 
     for epoch in range(scheduler.max_epoch):
-        log(f"EPOCH {epoch}...", logfile)
+
         train_loss = process(model, train_loader, optimizer=optimizer, device=device)
         valid_loss = process(model, valid_loader, optimizer=None, device=device)
 
+        log(f"EPOCH {epoch}...", logfile)
         log(f"  Train loss: {train_loss.pow(0.5)}", logfile)
         log(f"  Valid loss: {valid_loss.pow(0.5)}", logfile)
 
@@ -130,9 +133,13 @@ def evaluate(model, dataset, device='cpu'):
     predictions: list
     """
     # Passing data to torch.utils.data.DataLoader, use seq_collate for LSTM models
-    global batch_size, ratio
+    global save_dir
+    param_name = 'sequence' if dataset.has_sequence else 'feature'
+    param_dir = pathlib.Path(os.path.join(save_dir, f"best_params_{param_name}.pkl"))
+    model.load_state_dict(torch.load(param_dir))
+
     fn = seq_collate if model.__class__.__name__ == 'LSTMPredictor' else None
-    test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=fn)
+    test_loader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=fn)
 
     predictions = []
     with torch.set_grad_enabled(False):
@@ -161,9 +168,13 @@ def generate_pred_dist(model, dataset, device='cpu', num_pass=500):
     -------
     distribution: list
     """
-    global batch_size, ratio
+    global save_dir, batch_size
+    param_name = 'sequence' if dataset.has_sequence else 'feature'
+    param_dir = pathlib.Path(os.path.join(save_dir, f"best_params_{param_name}.pkl"))
+    model.load_state_dict(torch.load(param_dir))
+
     fn = seq_collate if model.__class__.__name__ == 'LSTMPredictor' else None
-    test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=fn)
+    test_loader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=fn)
     enable_dropout(model)
 
     distribution = []
@@ -198,12 +209,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Hyperparameters
-    max_epoch = 500
-    batch_size = 16
+    max_epoch = 1000
+    batch_size = 500
     ratio = 0.2
-    lr = 5e-4
+    lr = 1e-5
     patience = 50
-    noise = 0.2
+    noise = 0.1
 
     # Working directory setup
     loader_root = "./loader.yml"
@@ -213,8 +224,8 @@ if __name__ == '__main__':
     # Debug argument setup
     if args.debug:
         save_dir = os.path.join('./saved_params', 'debug')
-        max_epoch = 200
-        patience = 20
+        max_epoch = 10
+        patience = 1
 
     # cuda setup
     if args.gpu == -1:

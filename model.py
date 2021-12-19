@@ -171,7 +171,7 @@ class KnapsackSolver:
 
         if self.model == 'Expected Value':
             pred = np.array(self.distribution.sum() / len(self.distribution))
-            m.setObjective((6 * s * pred - c - p) @ x, gp.GRB.MAXIMIZE)
+            m.setObjective((6*s * pred - 6*c - p) @ x, gp.GRB.MAXIMIZE)
             m.optimize()
 
             solution = np.array(x.X).astype(int)
@@ -184,7 +184,7 @@ class KnapsackSolver:
             pred = np.array([dist[j].iloc[idx[j]] for j in range(cdf.shape[1])])
 
             v = m.addMVar(shape=1, name='v')
-            m.addConstr((6 * s * pred - c - p) @ x >= v)
+            m.addConstr((6*s * pred - 6*c - p) @ x >= v)
             m.setObjective(v, gp.GRB.MAXIMIZE)
             m.optimize()
 
@@ -194,7 +194,7 @@ class KnapsackSolver:
         else:
             warnings.warn("Invalid model type. Processing simple predictions of optimization.", UserWarning)
             pred = self.predictions
-            m.setObjective((6 * s * pred - c - p) @ x, gp.GRB.MAXIMIZE)
+            m.setObjective((6*s * pred - 6*c - p) @ x, gp.GRB.MAXIMIZE)
             m.optimize()
 
             solution = np.array(x.X).astype(int)

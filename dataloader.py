@@ -20,7 +20,7 @@ def seq_tensor(gas, cnd, hrs, n=(1e5, 1e4, 1e3)):
     if np.isnan(hrs[0]):
         return torch.zeros(1, 4)
 
-    rest, sequences = 0, []
+    rest, sequences = 0, [[0, 0, 0, 0]]
     for j, h in enumerate(hrs):
         if h == 0:
             rest += 1
@@ -64,7 +64,7 @@ def seq_collate(batch):
     return padded_batch
 
 
-def preprocess(dataset, normalize_dict, remove_feats=None, augment=False, pad=True):
+def preprocess(dataset, normalize_dict, remove_feats=None, augment=False):
     """
     Preprocesses datasets via normalizing and removing unnecessary features.
     Also one-hot-encodes string features.
@@ -75,8 +75,6 @@ def preprocess(dataset, normalize_dict, remove_feats=None, augment=False, pad=Tr
     remove_feats: (optional) list
     augment: (optional) bool
         augments and reproduces data if true
-    pad: (optional) bool
-        if true, pads sequences as PackedSequence()
     Returns
     -------
     feature_dataset: WellDataset
@@ -117,13 +115,13 @@ def preprocess(dataset, normalize_dict, remove_feats=None, augment=False, pad=Tr
         sequence_dataset = augment_data(sequence_dataset)
 
     total_features = [f for f in dataset.columns if ('MONTH' not in f and 'mo.' not in f)]
-    sequence_dataset = WellDataset(sequence_dataset, total_features, sequence=True, pad=pad)
-    feature_dataset = WellDataset(feature_dataset, total_features, sequence=False, pad=pad)
+    sequence_dataset = WellDataset(sequence_dataset, total_features, sequence=True)
+    feature_dataset = WellDataset(feature_dataset, total_features, sequence=False)
 
     return feature_dataset, sequence_dataset
 
 
-def exam_loader(train_data, exam_data, norm_dict, remove_feats=None, pad=True):
+def exam_loader(train_data, exam_data, norm_dict, remove_feats=None):
     """
     Preprocesses exam datasets via normalizing and removing unnecessary features.
     Also one-hot-encodes string features.
@@ -134,8 +132,6 @@ def exam_loader(train_data, exam_data, norm_dict, remove_feats=None, pad=True):
     exam_data: pandas.DataFrame
     norm_dict: dict
     remove_feats: (optional) list
-    pad: (optional) bool
-        if true, pads sequences as PackedSequence()
     Returns
     -------
     exam_dataset: WellDataset
@@ -182,8 +178,8 @@ def exam_loader(train_data, exam_data, norm_dict, remove_feats=None, pad=True):
     sequence_dataset = dataset.dropna(subset=[target_name]).reset_index(drop=True)
 
     total_features = [f for f in dataset.columns if ('MONTH' not in f and 'mo.' not in f)]
-    exam_feature_dataset = WellDataset(feature_dataset, total_features, sequence=False, exam=True, pad=pad)
-    exam_sequence_dataset = WellDataset(sequence_dataset, total_features, sequence=True, exam=True, pad=pad)
+    exam_feature_dataset = WellDataset(feature_dataset, total_features, sequence=False, exam=True)
+    exam_sequence_dataset = WellDataset(sequence_dataset, total_features, sequence=True, exam=True)
 
     return exam_feature_dataset, exam_sequence_dataset
 
@@ -242,15 +238,13 @@ class WellDataset(Dataset):
     gas_norm: float (optional)
     sequence: bool (optional)
     exam: bool (optional)
-    pad: bool (optional)
     """
-    def __init__(self, dataset, features, gas_norm=1, sequence=False, exam=False, pad=True):
+    def __init__(self, dataset, features, gas_norm=1, sequence=False, exam=False):
         self.dataset = dataset
         self.features = features
         self.gas_norm = gas_norm
         self.has_sequence = sequence
         self.exam = exam
-        self.pad = pad
 
     def __len__(self):
         return len(self.dataset)
@@ -261,14 +255,7 @@ class WellDataset(Dataset):
         cnd = np.array(self.dataset[[f'CND_MONTH_{j}' for j in range(1, 31)]].loc[idx])
         hrs = np.array(self.dataset[[f'HRS_MONTH_{j}' for j in range(1, 31)]].loc[idx])
 
-        # For LSTM models use seq_tensor function to pack sequences
-        if self.pad:
-            sequences = seq_tensor(gas, cnd, hrs) if self.has_sequence else torch.zeros(1, 4)
-        # Otherwise use below codes for simple MLP models
-        else:
-            sequences = torch.tensor(np.concatenate([gas/1e5, cnd/1e4, hrs/1e3], axis=0))
-            sequences = sequences if self.has_sequence else torch.empty(0)
-
+        sequences = seq_tensor(gas, cnd, hrs) if self.has_sequence else torch.zeros(1, 4)
         target = torch.zeros(1)
         if not self.exam:
             target_name = 'Last 6 mo. Avg. GAS (Mcf)' if self.has_sequence else 'First 6 mo. Avg. GAS (Mcf)'

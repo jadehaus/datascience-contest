@@ -13,7 +13,7 @@ with the desired environment name in place of `<env>`.
 Then, upload the data `.csv` files under `datascience-contest/datasets`. Datasets are not disclosed to the public.   
 
 ### Training Models   
-All the models (including the Knapsack Solver) are written in `model.py` file. The imported models are trained and evaluated in `train.py`. Simply run   
+All the models (including the Knapsack Solver) are written in `model.py` file. The imported models are trained and evaluated in `train.py`. Simply run the following code:   
 
 ```
 python train.py
